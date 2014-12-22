@@ -190,10 +190,11 @@ def syncx(kvar, data, chrome):
         git remote rm origin 2>/dev/null;
         git remote add origin "$uri" 2>/dev/null;
         git pull -f origin;
+
         git checkout --detach HEAD 2>/dev/null;
         git branch -D master 2>/dev/null;
-        git checkout -b master $rev 
-        git branch -l | grep master 2>/dev/null || git checkout -b master origin/master;
+        git checkout -b master --track origin/master; 
+        git checkout $rev || git checkout --detach HEAD;
         sleep 3
         """
         print "\n[INFO]\t%s => %s@%s" % (key, uri, rev)

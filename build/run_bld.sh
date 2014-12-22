@@ -3,30 +3,27 @@ ROOT=`pwd`
 CHROME=$ROOT/src
 OS=`uname`
 
-#sudo sysctl -w kern.maxproc=2500
-#sudo sysctl -w kern.maxprocperuid=2500
 
 function gsync() {
-    gfile=$CHROME/.gclient
+    gfile=$CHROME/../.gclient
     #[ -f $gfile ] && return
-    cd $CHROME && gclient config http://git.chromium.org
-
-    if [ $OS = "Darwin" ]; then
-        echo "target_os = ['mac']" >> $gfile
-    elif [ $OS = "Linux" ]; then
-        echo "target_os = ['unix']" >> $gfile
-    fi
+    opts="--unmanaged --deps-file=.DEPS.git"
+    cd $CHROME/.. && gclient config $opts https://chromium.googlesource.com/chromium/src.git
 }
 
 function initenv() {
     GYP_DEFINES=""
     if [ $OS = "Darwin" ]; then
+        #sudo sysctl -w kern.maxproc=2500
+        #sudo sysctl -w kern.maxprocperuid=2500
         export GYP_GENERATORS="ninja,xcode-ninja"
         export GYP_GENERATOR_FLAGS="xcode_ninja_main_gyp=build/ninja/all.ninja.gyp"
         #GYP_DEFINES+=" clang=0" 
     elif [ $OS = "Linux" ]; then
         export GYP_GENERATORS="ninja"
         GYP_DEFINES+=" clang=1" 
+        GYP_DEFINES+=" disable_nacl=1"
+        #GYP_DEFINES+=" clang_use_chrome_plugins=0"
     fi
 
     GYP_DEFINES+=" fastbuild=1"
@@ -37,31 +34,31 @@ function initenv() {
 }
 
 function prepare() {
-    cd $CHROME && build/gyp_chromium --depth .
+    cd $CHROME/../ && gclient sync
+    cd $CHROME/../ && gclient runhooks --deps=$OS
+    cd $CHROME && build/gyp_chromium
 }
 
 function update() { 
+    echo
     #cd $CHROME && build/install-build-deps.sh
     # for linux without plugin
-    cd $CHROME && tools/clang/scripts/update.sh --force-local-build --without-android
+    #cd $CHROME && tools/clang/scripts/update.sh --force-local-build --without-android
     # for mac/ios
     #cd $CHROME && tools/clang/scripts/update.sh
 }
 
 function build() {
-    UTIL=$CHROME/build/util
-    [ ! -e "$UTIL/LASTCHANGE" ] && cd $UTIL && python lastchange.py -o LASTCHANGE
-    [ ! -e "$UTIL/LASTCHANGE.blink" ] && cd $UTIL && python lastchange.py -o LASTCHANGE.blink
-
     cd $CHROME && ninja -C out/Debug chrome -j16
     #cd $CHROME && ninja -C out/Debug blink -j16
 }
 
 
 
-#gsync
+gsync
 initenv
 #prepare
-update
+#update
 build
+
 exit 0
