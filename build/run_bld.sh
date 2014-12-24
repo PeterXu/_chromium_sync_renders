@@ -49,8 +49,16 @@ function update() {
 }
 
 function build() {
-    cd $CHROME && ninja -C out/Debug chrome -j16
+    cd $CHROME && ninja -C out/Debug chrome chrome_sandbox -j16
     #cd $CHROME && ninja -C out/Debug blink -j16
+
+    
+    # needed if you build on NFS!
+    cd $CHROME && sudo cp out/Debug/chrome_sandbox /usr/local/sbin/chrome-devel-sandbox 
+    if [ -f /usr/local/sbin/chrome-devel-sandbox ]; then
+        sudo chown root:root /usr/local/sbin/chrome-devel-sandbox
+        sudo chmod 4755 /usr/local/sbin/chrome-devel-sandbox
+    fi
 }
 
 

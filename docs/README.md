@@ -61,3 +61,31 @@ media
     ### process url
     url/gurl.cc
 
+
+ftp/http/file:// 
+===============
+1. net/url_request/url_request_context_builder.cc
+    URLRequestContext* URLRequestContextBuilder::Build() {
+        job_factory->SetProtocolHandler("file", ..);
+        job_factory->SetProtocolHandler("ftp", "..");
+    }
+
+
+2. chrome/service/net/service_url_request_context_getter.cc
+   net/url_request/url_request_context_getter.cc
+   net/url_request/url_request_http_job.cc
+   net/filter/filter.h
+    net::URLRequestContext* ServiceURLRequestContextGetter::GetURLRequestContext() {
+        net::URLRequestContextBuilder builder;
+        ...
+        builder.Build();
+    }
+
+3. components/cronet/url_request_context_config.cc
+    void URLRequestContextConfig::ConfigureURLRequestContextBuilder(net::URLRequestContextBuilder* context_builder) {
+        context_builder->set_user_agent(user_agent);
+        context_builder->SetSpdyAndQuicEnabled(enable_spdy, enable_quic);
+        context_builder->set_quic_connection_options(..);
+    }
+
+
