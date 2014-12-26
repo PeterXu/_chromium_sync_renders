@@ -114,3 +114,22 @@ ftp/http/file://
     content/browser/browser_url_handler_impl.cc
     static const char* const default_allowed_sub_schemes[] = {kFtpScheme}
 
+
+    register new protocol handler
+-----------
+    chrome/browser/ui/browser.cc
+    void RegisterProtocolHandler(content::WebContents* web_contents,
+                                const std::string& protocol,
+                                const GURL& url,
+                                bool user_gesture) override;
+
+
+ws/wss
+======
+
+    git grep wss | grep -v "test\|android\|ai:\|png\|py:\|html:\|gif\|JPG\|pem"
+-----------
+
+    chrome/browser/prerender/prerender_util.cc
+    void ReportUnsupportedPrerenderScheme(const GURL& url);
+
