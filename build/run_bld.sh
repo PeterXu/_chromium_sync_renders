@@ -6,7 +6,7 @@ OS=`uname`
 
 function gsync() {
     gfile=$CHROME/../.gclient
-    #[ -f $gfile ] && return
+    [ -f $gfile ] && return
     opts="--unmanaged --deps-file=.DEPS.git"
     cd $CHROME/.. && gclient config $opts https://chromium.googlesource.com/chromium/src.git
 }
@@ -34,9 +34,16 @@ function initenv() {
 }
 
 function prepare() {
-    cd $CHROME/../ && gclient sync
-    cd $CHROME/../ && gclient runhooks --deps=$OS
-    cd $CHROME && build/gyp_chromium
+    opt="all"
+    [ $# -eq 1 ] && opt="$1"
+    echo "[INFO] prepare for $opt .."
+    if [ "$opt" = "all" -o "$opt" = "gclient" ]; then
+        cd $CHROME/../ && gclient sync
+        cd $CHROME/../ && gclient runhooks --deps=$OS
+    fi
+    if [ "$opt" = "all" -o "$opt" = "gyp" ]; then
+        cd $CHROME && build/gyp_chromium
+    fi
 }
 
 function update() { 
@@ -49,12 +56,11 @@ function update() {
 }
 
 function build() {
-    cd $CHROME && ninja -C out/Debug chrome chrome_sandbox -j16
+    cd $CHROME && ninja -C out/Debug chrome chrome_sandbox -j16 || exit 1
     #cd $CHROME && ninja -C out/Debug blink -j16
 
-    
     # needed if you build on NFS!
-    cd $CHROME && sudo cp out/Debug/chrome_sandbox /usr/local/sbin/chrome-devel-sandbox 
+    cd $CHROME && sudo cp -f out/Debug/chrome_sandbox /usr/local/sbin/chrome-devel-sandbox 
     if [ -f /usr/local/sbin/chrome-devel-sandbox ]; then
         sudo chown root:root /usr/local/sbin/chrome-devel-sandbox
         sudo chmod 4755 /usr/local/sbin/chrome-devel-sandbox
@@ -65,7 +71,8 @@ function build() {
 
 gsync
 initenv
-#prepare
+#prepare gclient
+#prepare gyp
 #update
 build
 

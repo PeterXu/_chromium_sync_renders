@@ -35,7 +35,7 @@ code
 
 media
 =========
-1. core/html/HTMLMediaElement.cpp
+    core/html/HTMLMediaElement.cpp
     OwnPtr<MediaPlayer> m_player;
     static bool canLoadURL(const KURL& url, const ContentType& contentType, const String& keySystem);
     void HTMLMediaElement::loadResource(const KURL& url, ContentType& contentType, const String& keySystem);
@@ -64,28 +64,53 @@ media
 
 ftp/http/file:// 
 ===============
-1. net/url_request/url_request_context_builder.cc
+
+    url_request for mmt
+-------------
+
+    net/url_request/url_request_context_builder.cc
+    net/url_request/ftp_protocol_handler.h
+    net/url_request/file_protocol_handler.h
+    net/url_request/http_protocol_handler.h
+
     URLRequestContext* URLRequestContextBuilder::Build() {
         job_factory->SetProtocolHandler("file", ..);
         job_factory->SetProtocolHandler("ftp", "..");
     }
 
 
-2. chrome/service/net/service_url_request_context_getter.cc
-   net/url_request/url_request_context_getter.cc
-   net/url_request/url_request_http_job.cc
-   net/filter/filter.h
+    chrome/service/net/service_url_request_context_getter.cc
+    net/url_request/url_request_context_getter.cc
+    net/url_request/url_request_http_job.cc
+    net/url_request/url_request_ftp_job.cc
+    net/url_request/url_request_file_job.cc
+    net/filter/filter.h
+
     net::URLRequestContext* ServiceURLRequestContextGetter::GetURLRequestContext() {
         net::URLRequestContextBuilder builder;
         ...
         builder.Build();
     }
 
-3. components/cronet/url_request_context_config.cc
+    
+    components/cronet/url_request_context_config.cc
     void URLRequestContextConfig::ConfigureURLRequestContextBuilder(net::URLRequestContextBuilder* context_builder) {
         context_builder->set_user_agent(user_agent);
         context_builder->SetSpdyAndQuicEnabled(enable_spdy, enable_quic);
         context_builder->set_quic_connection_options(..);
     }
 
+
+    git grep kFtpScheme | grep -v "unittest\|android", git grep DISABLE_MMT_SUPPORT | grep -v "unittest\|android"
+-------------
+    chrome/browser/history/in_memory_url_index.cc
+    void InitializeSchemeWhitelist(std::set<std::string>* whitelist) {
+        whitelist->insert(std::string(url::kFtpScheme));
+    }
+
+    chrome/browser/web_applications/web_app.cc
+    static const char* const kValidUrlSchemes[] = {kFtpScheme}
+
+    content/browser/browser_url_handler_impl.cc
+    static const char* const default_allowed_sub_schemes[] = {kFtpScheme}
 
