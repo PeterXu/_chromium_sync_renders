@@ -27,14 +27,14 @@ start options
     -process-per-site
     -in-process-plugins
 
-code
+code (WebKit)
 =========
     CSS parser(CSSParser) is done by bison, implemented in CSSGrammar.y
     CSSParser::createStyleRule()
 
 
-media
-=========
+media (WebKit)
+==============
     core/html/HTMLMediaElement.cpp
     OwnPtr<MediaPlayer> m_player;
     static bool canLoadURL(const KURL& url, const ContentType& contentType, const String& keySystem);
@@ -64,6 +64,9 @@ media
 
 ftp/http/file:// 
 ===============
+
+    chrome/browser/profiles/profile_io_data.cc: add new protocol into it
+    net/url_request/url_request_context_builder.cc: add new protocol into it
 
     url_request for mmt
 -------------
@@ -132,4 +135,26 @@ ws/wss
 
     chrome/browser/prerender/prerender_util.cc
     void ReportUnsupportedPrerenderScheme(const GURL& url);
+
+
+ffmpeg
+======
+
+    git grep OpenContext  | grep -v "unittest\|views\|OpenContextMenu"
+------------
+    media/filters/ffmpeg_demuxer.h
+    implement FFmpegDemuxer
+
+    media/filters/ffmpeg_glue.h
+    implement FFmpegGlue and binds with FFmpegURLProtocol
+
+    media/filters/blocking_url_protocol.h
+    BlockingUrlProtocol implement FFmpegURLProtocol
+
+    content/renderer/media/audio_decoder.cc
+    media/cast/test/fake_media_source.h
+    media/filters/in_memory_url_protocol.h
+    InMemoryUrlProtocol implement FFmpegURLProtocol
+
+
 
