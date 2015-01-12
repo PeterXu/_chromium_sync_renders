@@ -156,5 +156,70 @@ ffmpeg
     media/filters/in_memory_url_protocol.h
     InMemoryUrlProtocol implement FFmpegURLProtocol
 
+ 
+html docs
+===========
+http://www.chromium.org/audio-video
+http://www.chromium.org/developers/design-documents/inter-process-communication
 
+
+chrome browser
+==============
+    html5 fullscreen:
+        src/chrome/browser
+            Browser(WebContentsDelegate)->FullscreenController->BrowserWindow->ui::WebVeiw(WasResized)
+        src/content/browser: ViewHostMsg_ToggleFullscreen<Send>/ViewMsg_Resize(recevie)
+            IPCs of renderer process ->RenderViewHostImpl(Send/receive)->WebContentsImpl
+
+    ppapi
+        pp::MessageLoop::GetCurrent()
+
+    content/public/browser/site_instance.h
+    content/browser/browsing_instance.h
+        BrowserContext* browser_context();
+
+    chrome/browser/extensions/api/tabs/tabs_api.cc
+    extensions/browser/api/execute_code_function.cc
+    extensions/browser/script_executor.h
+        content::BrowserThread::PostTask
+
+    chrome/browser/chrome_notification_types.h
+    chrome/browser/ui/browser.h
+    chrome/browser/ui/browser_commands.h
+        Browser* OpenEmptyWindow(Profile* profile, HostDesktopType desktop_type);
+
+    chrome/browser/profiles/profile.h
+        static Profile* FromBrowserContext(content::BrowserContext* browser_context);
+        static Profile* FromWebUI(content::WebUI* web_ui);
+        
+    chrome/browser/ui/browser_finder.h
+    chrome/browser/chrome_main_browsertest.cc
+    content/public/browser/web_contents.h
+        browser()->tab_strip_model()->GetActiveWebContents()
+
+    chrome/browser/fullscreen.h
+        bool IsFullScreenMode();
+    chrome/browser/ui/host_desktop.h
+        HostDesktopType GetActiveDesktop();
+    chrome/service/service_process.cc 
+        ServiceProcess* g_service_process = NULL;
+    chrome/browser/browser_process.h
+        BrowserProcess* g_browser_process = NULL;
+
+
+conent public api
+=================
+    content/public/browser/web_contents.h
+    content/public/common/content_client.h
+    content/public/browser/render_frame_host.h
+        ContentClient* GetContentClient();
+        static WebContents* FromRenderViewHost(const RenderViewHost* rvh);
+        static WebContents* FromRenderFrameHost(RenderFrameHost* rfh);
+        static RenderFrameHost* FromID(int render_process_id, int render_frame_id);
+
+    content/public/browser/resource_request_info.h
+        static const ResourceRequestInfo* ForRequest(const net::URLRequest* request);
+        static bool GetRenderFrameForRequest(const net::URLRequest* request,int* render_process_id,int* render_frame_id);
+        virtual int GetRouteID() const = 0;
+        virtual int GetRenderFrameID() const = 0;
 
