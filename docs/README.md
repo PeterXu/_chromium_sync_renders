@@ -223,3 +223,21 @@ conent public api
         virtual int GetRouteID() const = 0;
         virtual int GetRenderFrameID() const = 0;
 
+storage api
+===========
+    extensions/browser/api/storage/storage_frontend.h
+    extensions/common/extension.h
+    extensions/browser/extension_registry.h
+    extensions/browser/extension_system.h
+        ExtensionSystem* ExtensionSystem::Get(content::BrowserContext* context);
+        ExtensionService* extension_service();
+
+    chrome/browser/profiles/profile_manager.h
+    chrome/browser/extensions/unpacked_installer.h
+    chrome/browser/extensions/extension_browsertest.h
+    chrome/browser/extensions/extension_service.h
+        ExtensionBrowserTest::LoadExtensionWithInstallParam(..);
+        UnpackedInstaller::Load(path);
+        ExtensionSystem* ExtensionSystem::Get(content::BrowserContext* context);
+        Extension* ExtensionService::GetExtensionById(id);
+
