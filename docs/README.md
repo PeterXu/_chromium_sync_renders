@@ -360,3 +360,5 @@ Read media
 media state
 ======
     third_party/WebKit/public/platform/WebMediaPlayer.h
+
+    OnFindStreamInfoDone => GetFFmpegStream => OnAudioRendererInitializeDone => OnVideoRendererInitializeDone
