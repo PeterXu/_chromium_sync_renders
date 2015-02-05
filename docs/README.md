@@ -362,3 +362,13 @@ media state
     third_party/WebKit/public/platform/WebMediaPlayer.h
 
     OnFindStreamInfoDone => GetFFmpegStream => OnAudioRendererInitializeDone => OnVideoRendererInitializeDone
+
+
+load extensions
+===============
+    ExtensionLoaderHandler::LoadUnpackedExtensionImpl():
+    chrome/browser/ui/webui/extensions/extension_loader_handler.cc
+
+    web_ui register event "extensionLoaderLoadUnpacked" by chrome.send('extensionLoaderLoadUnpacked');
+    chrome/browser/ui/webui/extensions/extension_loader_handler.cc
+
