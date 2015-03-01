@@ -372,3 +372,21 @@ load extensions
     web_ui register event "extensionLoaderLoadUnpacked" by chrome.send('extensionLoaderLoadUnpacked');
     chrome/browser/ui/webui/extensions/extension_loader_handler.cc
 
+
+cast a/v stream
+===============
+    chrome/common/extensions/api/cast_streaming_session.idl
+    chrome/common/extensions/api/cast_streaming_rtp_stream.idl
+    chrome/common/extensions/api/cast_streaming_udp_transport.idl
+
+    chrome/common/extensions/api/_permission_features.json
+    chrome/renderer/extensions/cast_streaming_native_handler.cc
+
+    CreateCastSession/DestroyCastRtpStream/StartCastRtpStream/SetDestinationCastUdpTransport
+    chrome/renderer/media/cast_rtp_stream.cc
+
+
+    for WebKit
+    WebKit/Source/platform/RuntimeEnabledFeatures.in
+    WebKit/Source/core/html/HTMLMediaElement.h
+

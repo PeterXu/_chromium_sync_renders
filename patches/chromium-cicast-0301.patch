@@ -1,0 +1,189 @@
+From 3ca7c13cb422f21393f11fa9b484f9e338d7b4b0 Mon Sep 17 00:00:00 2001
+From: Yongze Xu <yongzxu@ubuntu.(none)>
+Date: Sat, 28 Feb 2015 12:14:32 +0800
+Subject: [PATCH] [todo] add cicast extension to process chrome.cast
+
+---
+ .../extensions/api/_permission_features.json       |    7 +-
+ .../docs/examples/api/cicast/background.js         |   29 +++++++++
+ .../docs/examples/api/cicast/content_scripts.js    |   68 ++++++++++++++++++++
+ .../docs/examples/api/cicast/manifest.json         |   31 +++++++++
+ 4 files changed, 133 insertions(+), 2 deletions(-)
+ create mode 100644 chrome/common/extensions/docs/examples/api/cicast/background.js
+ create mode 100644 chrome/common/extensions/docs/examples/api/cicast/content_scripts.js
+ create mode 100644 chrome/common/extensions/docs/examples/api/cicast/manifest.json
+
+diff --git a/chrome/common/extensions/api/_permission_features.json b/chrome/common/extensions/api/_permission_features.json
+index fd3b182..3b44f50 100644
+--- a/chrome/common/extensions/api/_permission_features.json
++++ b/chrome/common/extensions/api/_permission_features.json
+@@ -125,7 +125,10 @@
+     "channel": "stable",
+     "extension_types": ["extension", "legacy_packaged_app"]
+   },
+-  "cast": {
++  "cast": [{
++    "channel": "dev",
++    "extension_types": ["extension"]
++  }, {
+     "channel": "stable",
+     "extension_types": ["extension", "legacy_packaged_app", "platform_app"],
+     "whitelist": [
+@@ -135,7 +138,7 @@
+       "F155646B5D1CA545F7E1E4E20D573DFDD44C2540",  // Google Cast Beta
+       "16CA7A47AAE4BE49B1E75A6B960C3875E945B264"   // Google Cast Stable
+     ]
+-  },
++  }],
+   "cast.streaming": [{
+     "channel": "dev",
+     "extension_types": ["extension"]
+diff --git a/chrome/common/extensions/docs/examples/api/cicast/background.js b/chrome/common/extensions/docs/examples/api/cicast/background.js
+new file mode 100644
+index 0000000..0e02702
+--- /dev/null
++++ b/chrome/common/extensions/docs/examples/api/cicast/background.js
+@@ -0,0 +1,29 @@
++function log(msg) {
++  msg = "[CI] " + msg;
++  //alert(msg);
++  console.log(msg);
++}
++
++// listen tab event
++chrome.tabs.onUpdated.addListener(function(tid, info, tab) {
++  if (info.status == "complete" && tab.url.indexOf("chrome://") < 0) {
++    log("tabs complete id=" + tab.id);
++  }
++});
++
++// listen message
++chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
++    log(sender.tab ? "from a content script:" + sender.tab.url + " id=" + sender.tab.id : "from the extension");
++
++    if (sender.tab) {
++        if (request.greeting == "hello") {
++            log("chrome.cast.streaming.session.create=" + chrome.cast.streaming.session.create);
++            sendResponse({farewell: "goodbye"});
++            chrome.tabCapture.capture({audio: true, video: true}, function(stream) {
++                alert("stream=" + stream);
++            });
++        }else if (request.greeting == "cast") {
++            log("cast=" + request.body);      
++        }
++    }
++});
+diff --git a/chrome/common/extensions/docs/examples/api/cicast/content_scripts.js b/chrome/common/extensions/docs/examples/api/cicast/content_scripts.js
+new file mode 100644
+index 0000000..6711bac
+--- /dev/null
++++ b/chrome/common/extensions/docs/examples/api/cicast/content_scripts.js
+@@ -0,0 +1,68 @@
++function log(msg) {
++    msg = "[CI] " + msg;
++    //alert(msg);
++    console.log(msg);
++}
++
++function loadScript(url) {
++    var script = document.createElement('script')
++    script.setAttribute("type","text/javascript")
++    script.setAttribute("src", url);
++    var head = document.getElementsByTagName("head");
++    if (head && head[0]) head[0].appendChild(script);
++}
++
++
++// for chrome.storage.local
++// chrome.storage.StorageArea.get()/set()/remove()/clear()
++chrome.storage.onChanged.addListener(function(changes, namespace) {
++    log("storage.onChanged");
++    if (namespace != "local") {
++        log("donot process the namespace = " + namespace);
++        return;
++    }
++
++    for (key in changes) {
++        var storageChange = changes[key];
++        log("Storage key " + key + " in namespace " + namespace + " changed. " +
++            "Old value was " + storageChange.oldValue + ", new value is " + storageChange.newValue);
++    }
++});
++
++function sendMessage(message, callback) {
++    chrome.runtime.sendMessage(message, callback);
++}
++function msgCallback(response) {
++    if (response && response.farewell) {
++        log(response.farewell);
++    }
++}
++
++function procCastMedia() {
++    e = document.getElementById("Video1");
++    if (e) {
++        e.controls = "controls";
++        e.oncanplay = function() {
++            e.style.display = 'block';
++        };
++        e.onloadeddata = function() {
++            e.style.display = 'none';
++            e.play();
++        };
++
++        e.src = "http://localhost/tmp/test.mp4";
++        e.load();
++        e.play();
++    }
++}
++
++// document.readyState == "loading/interactive/complete"; 
++// it can ensure this script to be ran after window.onload
++window.onload = function() {
++    log("window.onload");
++    if (document.readyState != "complete") return;
++    procCastMedia();
++
++    msg = {greeting: "hello"};
++    sendMessage(msg, msgCallback);
++};
+diff --git a/chrome/common/extensions/docs/examples/api/cicast/manifest.json b/chrome/common/extensions/docs/examples/api/cicast/manifest.json
+new file mode 100644
+index 0000000..b20c952
+--- /dev/null
++++ b/chrome/common/extensions/docs/examples/api/cicast/manifest.json
+@@ -0,0 +1,31 @@
++{
++    "key": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDcBHwzDvyBQ6bDppkIs9MP4ksKqCMyXQ/A52JivHZKh4YO/9vJsT3oaYhSpDCE9RPocOEQvwsHsFReW2nUEc6OLLyoCFFxIb7KkLGsmfakkut/fFdNJYh0xOTbSN8YvLWcqph09XAY2Y/f0AL7vfO1cuCqtkMt8hFrBGWxDdf9CQIDAQAB",
++    "name" : "org.chromium.cicast",
++    "version": "1.0",
++    "manifest_version": 2,
++    "description": "chromium ci cast",
++    "permissions": [
++        "mmt://*/*",
++        "file://*/*",
++        "http://*/*",
++        "https://*/",
++        "nativeMessaging",
++        "notifications",
++        "tabs", 
++        "tabCapture",
++        "cast",
++        "cast.streaming",
++        "storage"
++    ],
++    "background": {
++        "scripts": ["background.js"],
++        "persistent": false
++    },
++    "content_scripts": [
++        {
++            "matches" : ["mmt://*/*", "http://*/*", "file://*/*"],
++            "run_at" : "document_start",
++            "js" : ["content_scripts.js"]
++        }
++    ]
++}
+-- 
+1.7.9.5
+
