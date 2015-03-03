@@ -390,3 +390,43 @@ cast a/v stream
     WebKit/Source/platform/RuntimeEnabledFeatures.in
     WebKit/Source/core/html/HTMLMediaElement.h
 
+    for media player
+    Source/core/html/HTMLMediaElement.h     =>  [html element]
+    platform/graphics/media/MediaPlayer.h =>  [interface]
+    public/platform/WebMediaPlayerClient.h =>
+    Source/web/WebMediaPlayerClientImpl.h =>  [implemention]
+        MediaPlayer* WebMediaPlayerClientImpl::create(MediaPlayerClient *);
+        WebMediaPlayerClientImpl::webMediaPlayer();
+    public/web/WebFrameClient.h => 
+        to call createMediaPlayer(...) [REAL PLAYER]
+
+    content/renderer/render_frame_impl.cc   =>
+        new media::WebMediaPlayerImpl(...)
+    media/blink/webmediaplayer_impl.h       =>
+    media/blink/webmediaplayer_delegate.h   =>
+        WebMediaPlayerImpl()
+        WebMediaPlayerImpl::paint()
+    media/filters/default_renderer_factory.cc   =>
+    media/filters/renderer_impl.cc
+    media/filters/video_renderer_impl.cc
+    media/blink/video_frame_compositor.cc
+    cc/layers/video_frame_provider.h
+        create ffmpeg audio/video decoder
+        VideoRendererImpl::PaintNextReadyFrame_Locked() => paint_cb_.Run(frame)
+
+    ###p1:
+    RenderFrameImpl::createMediaPlayer() => new media::DefaultRendererFactory() => new media::WebMediaPlayerImp() =>
+    Pipeline::Start(paint_cb) paint_cb  -> WebMediaPlayerImpl::FrameReady() 
+                                        -> VideoFrameCompositor::UpdateCurrentFrame()
+                                        -> cc::VideoFrameProvider::Client::DidReceiveFrame()
+
+    ###p2:
+    Pipeline::Start(paint_cb) => RendererImpl::Initialize(paint_cb) => RendererImpl::InitializeVideoRenderer() =>
+    VideoRendererImpl::Initialize(paint_cb) => VideoRendererImpl::PaintNextReadyFrame_Locked() => paint_cb.Run(next_frame)
+
+
+    ###p3:
+        content/renderer/render_frame_impl.cc => called from WebKit
+        media/blink/webmediaplayer_impl.cc
+        WebMediaPlayerImpl::FrameReady() => VideoFrameCompositor::UpdateCurrentFrame()
+

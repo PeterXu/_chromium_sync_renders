@@ -56,8 +56,14 @@ function update() {
 }
 
 function build() {
-    cd $CHROME && ninja -C out/Debug chrome chrome_sandbox -j16 || exit 1
-    #cd $CHROME && ninja -C out/Debug blink -j16
+    targets=""
+    #targets+="blink "
+    targets+="chrome chrome_sandbox "
+    targets+="cast_receiver cast_sender cast_simulator "
+    targets+="cast_tools cast_benchmarks tap_proxy udp_proxy "
+    #targets+="generate_barcode_video generate_timecode_audio "
+    #targets+="mcs_probe maptsvdifftool bitmaptools image_diff minidump_stackwalk "
+    cd $CHROME && ninja -C out/Debug $targets -j16 || exit 1
 
     # needed if you build on NFS!
     cd $CHROME && sudo cp -f out/Debug/chrome_sandbox /usr/local/sbin/chrome-devel-sandbox 
