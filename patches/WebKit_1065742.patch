@@ -1,0 +1,98 @@
+From 68007379c6ad42122f37240738115de2bf807866 Mon Sep 17 00:00:00 2001
+From: Yongze Xu <yongzxu@ubuntu.(none)>
+Date: Sun, 1 Mar 2015 23:29:36 +0800
+Subject: [PATCH 1/2] [webkit] add cast() method into WebMediaPlayer.h and add
+ function cast into HTMLMediaElement
+
+---
+ Source/core/html/HTMLMediaElement.cpp |    5 +++++
+ Source/core/html/HTMLMediaElement.h   |    1 +
+ Source/core/html/HTMLMediaElement.idl |    2 ++
+ public/platform/WebMediaPlayer.h      |    1 +
+ 4 files changed, 9 insertions(+)
+
+diff --git a/Source/core/html/HTMLMediaElement.cpp b/Source/core/html/HTMLMediaElement.cpp
+index b66d005..5b1088c 100644
+--- a/Source/core/html/HTMLMediaElement.cpp
++++ b/Source/core/html/HTMLMediaElement.cpp
+@@ -2375,6 +2375,11 @@ void HTMLMediaElement::requestRemotePlaybackControl()
+     webMediaPlayer()->requestRemotePlaybackControl();
+ }
+ 
++void HTMLMediaElement::cast(bool enabled, const String& ip, unsigned short port)
++{
++    webMediaPlayer()->cast(enabled, ip, port);
++}
++
+ void HTMLMediaElement::closeMediaSource()
+ {
+     if (!m_mediaSource)
+diff --git a/Source/core/html/HTMLMediaElement.h b/Source/core/html/HTMLMediaElement.h
+index 97b51ca..d674e23 100644
+--- a/Source/core/html/HTMLMediaElement.h
++++ b/Source/core/html/HTMLMediaElement.h
+@@ -147,6 +147,7 @@ public:
+     void pause();
+     void requestRemotePlayback();
+     void requestRemotePlaybackControl();
++    void cast(bool enabled, const String& ip=String(), unsigned short port=0);
+ 
+     // statistics
+     unsigned webkitAudioDecodedByteCount() const;
+diff --git a/Source/core/html/HTMLMediaElement.idl b/Source/core/html/HTMLMediaElement.idl
+index 0cf3b08..6f873ea 100644
+--- a/Source/core/html/HTMLMediaElement.idl
++++ b/Source/core/html/HTMLMediaElement.idl
+@@ -70,6 +70,8 @@
+     [Reflect] attribute boolean loop;
+     void play();
+     void pause();
++    void cast(boolean enabled, optional DOMString ip, optional unsigned short port);
++
+ 
+     // media controller
+     [RuntimeEnabled=MediaController, Reflect] attribute DOMString mediaGroup;
+diff --git a/public/platform/WebMediaPlayer.h b/public/platform/WebMediaPlayer.h
+index 173a315..825d0dc 100644
+--- a/public/platform/WebMediaPlayer.h
++++ b/public/platform/WebMediaPlayer.h
+@@ -111,6 +111,7 @@ public:
+     virtual void requestRemotePlayback() { };
+     virtual void requestRemotePlaybackControl() { };
+     virtual void setPreload(Preload) { };
++    virtual void cast(bool enabled, const WebString& ip, unsigned short port) {};
+     virtual WebTimeRanges buffered() const = 0;
+     virtual WebTimeRanges seekable() const = 0;
+ 
+-- 
+1.7.9.5
+
+
+From f0d534afb28aee55a8c4ccde83acb795ca041879 Mon Sep 17 00:00:00 2001
+From: Yongze Xu <yongzxu@ubuntu.(none)>
+Date: Mon, 9 Mar 2015 17:05:28 +0800
+Subject: [PATCH 2/2] [webkit] fix null of webMediaPlayer
+
+---
+ Source/core/html/HTMLMediaElement.cpp |    5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/Source/core/html/HTMLMediaElement.cpp b/Source/core/html/HTMLMediaElement.cpp
+index 5b1088c..cbb0d99 100644
+--- a/Source/core/html/HTMLMediaElement.cpp
++++ b/Source/core/html/HTMLMediaElement.cpp
+@@ -2377,7 +2377,10 @@ void HTMLMediaElement::requestRemotePlaybackControl()
+ 
+ void HTMLMediaElement::cast(bool enabled, const String& ip, unsigned short port)
+ {
+-    webMediaPlayer()->cast(enabled, ip, port);
++    printf("HTMLMediaElement::cast, %p\n", webMediaPlayer());
++    if (webMediaPlayer()) {
++        webMediaPlayer()->cast(enabled, ip, port);
++    }
+ }
+ 
+ void HTMLMediaElement::closeMediaSource()
+-- 
+1.7.9.5
+

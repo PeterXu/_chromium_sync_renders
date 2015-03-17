@@ -1,7 +1,7 @@
 From d767d33b5ccfcc8fe74fc6bdefc08b3383d360e9 Mon Sep 17 00:00:00 2001
 From: Yongze Xu <yongzxu@ubuntu.(none)>
 Date: Wed, 21 Jan 2015 22:04:58 -0800
-Subject: [PATCH] add h264 demuxer for Chrome/linux/ia32&x64
+Subject: [PATCH 1/2] add h264 demuxer for Chrome/linux/ia32&x64
 
 ---
  chromium/config/Chrome/linux/ia32/config.asm |    2 +-
@@ -106,6 +106,33 @@ index dd6915e..b812ddc 100644
            'libavformat/img2.c',
            'libavformat/mov.c',
            'libavformat/mov_chan.c',
+-- 
+1.7.9.5
+
+
+From e18673977f1a79afd8344f5dd7f14eb82a988bd8 Mon Sep 17 00:00:00 2001
+From: Yongze Xu <yongzxu@ubuntu.(none)>
+Date: Sun, 25 Jan 2015 20:52:31 -0800
+Subject: [PATCH 2/2] [ok] hack for moof/tfhd's data offset
+
+---
+ libavformat/mov.c |    3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/libavformat/mov.c b/libavformat/mov.c
+index 64c2c10..d4ae8f0 100644
+--- a/libavformat/mov.c
++++ b/libavformat/mov.c
+@@ -2879,6 +2879,9 @@ static int mov_read_tfhd(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+     frag->base_data_offset = flags & MOV_TFHD_BASE_DATA_OFFSET ?
+                              avio_rb64(pb) : flags & MOV_TFHD_DEFAULT_BASE_IS_MOOF ?
+                              frag->moof_offset : frag->implicit_offset;
++    // TODO fix combine of mulit-moov from differet files
++    frag->base_data_offset = flags & MOV_TFHD_DEFAULT_BASE_IS_MOOF ?
++                             frag->moof_offset : frag->implicit_offset;
+     frag->stsd_id  = flags & MOV_TFHD_STSD_ID ? avio_rb32(pb) : trex->stsd_id;
+ 
+     frag->duration = flags & MOV_TFHD_DEFAULT_DURATION ?
 -- 
 1.7.9.5
 
