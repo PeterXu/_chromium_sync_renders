@@ -430,3 +430,45 @@ cast a/v stream
         media/blink/webmediaplayer_impl.cc
         WebMediaPlayerImpl::FrameReady() => VideoFrameCompositor::UpdateCurrentFrame()
 
+    ###audio1
+    media/blink/webaudiosourceprovider_impl.cc
+    media/filters/audio_renderer_impl.cc
+    Pipeline::Start(paint_cb) => RendererImpl::Initialize(paint_cb) =>
+    RendererImpl::InitializeAudioRenderer() =>
+    AudioRendererImpl::Initialize() =>
+    AudioRendererImpl::DecodedAudioReady(AudioBuffer)
+
+
+audio/video demuxing/decoding
+=============================
+    media/filters/video_renderer_impl.cc
+    VideoRendererImpl::ThreadMain() =>
+    VideoRendererImpl::PaintNextReadyFrame_Locked()/DropNextReadyFrame_Locked() =>
+    VideoRendererImpl::AttemptRead()/FrameReady()/StartPlayingFrom() =>
+    VideoRendererImpl::AttemptRead_Locked() =>
+
+    media/filters/decoder_stream.cc
+    typedef DecoderStream<DemuxerStream::VIDEO> VideoFrameStream;
+    DecoderStream<StreamType>::Read()/OnDecoderReinitialized()/OnBufferReady()/OnDecodeDone() =>
+    DecoderStream<StreamType>::ReadFromDemuxerStream() =>
+
+    media/filters/ffmpeg_demuxer.cc
+    FFmpegDemuxerStream::Read() =>
+    FFmpegDemuxerStream::SatisfyPendingRead() =>
+    FFmpegDemuxer::NotifyCapacityAvailable()/FFmpegDemuxer::OnSeekFrameDone() =>
+    FFmpegDemuxer::ReadFrameIfNeeded() => av_read_frame() => FFmpegDemuxer::OnReadFrameDone()
+
+
+    media/base/demuxer_stream.h
+    data streaming:  typedef VideoDecoder DecoderType;
+    av_packet_copy_props/av_read_frame/FFmpegDemuxer::OnReadFrameDone():    => (set pkt ts)
+    FFmpegDemuxerStream::EnqueuePacket() => (set buf timestamp)
+    DemuxerStream::Read() => get one DecoderBuffer from FFmpegDemuxerStream::buffer_queue_;
+    DecoderStream<StreamType>::ReadFromDemuxerStream() =>
+    DecoderStream<StreamType>::OnBufferReady() =>
+    DecoderStream<StreamType>::Decode() =>
+    FFmpegVideoDecoder::Decode() =>
+    FFmpegVideoDecoder::FFmpegDecode() => // set reordered_opaque here from buffer.timestamp().
+    DecoderStream<StreamType>::OnDecodeOutputReady() => DecoderStream<StreamType>::SatisfyRead() =>
+    VideoRendererImpl::FrameReady()
+
