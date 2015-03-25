@@ -6,7 +6,9 @@ Media Cast & MMTP Receiver
 0. chrome mmt协议
 -----------------
 
-### 0) 通过本地媒体读取数据
+### 1) MMT数据地址格式
+
+#### a) 通过本地媒体读取数据
 
 - html/cixml位置
     - /tmp/index.html
@@ -23,7 +25,7 @@ Media Cast & MMTP Receiver
     - cixml中格式: mmt://localhost/tmp/subset1.xml
     - chrome内部将额外添加: type=ci&htmlid=xx&tabid=xx
 
-### 1) 通过mmtp协议读取数据
+#### b) 通过mmtp协议读取数据
 
 - chrome地址格式: <mark>proto=mmtp</mark>
     - mmt://localhost/index?proto=mmtp
@@ -37,6 +39,34 @@ Media Cast & MMTP Receiver
         - mmt://localhost/subset.xml?proto=extra
     - chrome内部格式会额外添加: <mark>&type=ci&htmlid=xx&tabid=xx</mark>
 - html/xml是通过mmtp接收端直接获取得到.
+
+
+### 2) mmt协议处理数据流程
+
+### 3) mmt协议处理模块
+
+- mmt control
+- mmt stream
+- mmt parser
+- mpu parser
+- mmtp receiver
+
+
+***Source Code***
+
+    src/net/mmt/
+    src/net/url_request/
+    src/chrome/browser/
+    src/content/public/
+    src/extension/
+    src/third_party/ffmpeg/
+    
+    src/media/cast/
+    src/media/blink/
+    src/media/filters/
+    src/third_party/WebKit/
+
+
 
 
 <br />
@@ -138,21 +168,15 @@ void cast(boolean enable, optional string ip, optional short port);
 
 
 <br />
-2. MMTP Service接口
+2. MMTP Receiver接口
 -------------------
 
-### 0) 模块划分及功能
+### 0) 模块功能
 - **MMTP数据接收**: 
     - 处理广播地址协议
     - 接收asset id并返回对应的url
     - 接收组播频道媒体数据并通知chrome接收端
-- **MMTP多屏Server**: 
-    - 与chrome主屏交互, 重新生成副屏所需要的html/xml
-    - 接收chrome副屏的媒体共享请求, 并通知chrome主屏
-    - 向chrome副屏提供html/cixml资源
-- **通过消息在各模块之间进行交互**(以MMTP为中介): 
-    - <mark>chrome主屏</mark> <=> MMTP
-    - MMTP <=> <mark>chrome副屏</mark>
+
 
 <br />
 ### 1) MMTP消息类型及数据包结构
@@ -165,7 +189,6 @@ void cast(boolean enable, optional string ip, optional short port);
 enum mmtp_type_t {
     E_Mmtp_Unknown      =   0,
     
-    
     // For mmtp receiver
     E_Mmtp_Open         =   0x0001,
     E_Mmtp_CiHtml       =   0x0002,
@@ -175,12 +198,6 @@ enum mmtp_type_t {
     E_Mmtp_HeartBeat    =   0x0020,
     E_Mmtp_Close        =   0x0040,
     E_Mmtp_Quit         =   0x0080,
-    
-    // For mmtp multi-screen server
-    E_Mmtp_MS_Start     =   0x2001, //> start multi-screen server
-    E_Mmtp_MS_Share     =   0x2002, //> Share some asset id
-    E_Mmtp_MS_Request   =   0x2004, //> second request sharing from main screen
-    
     
     E_Mmtp_All          =   0xffff
 };
@@ -198,6 +215,7 @@ typedef struct mmtp_packet_t {
     char        body[1];
 }mmtp_packet_t;
 #praram pack()
+
 
 #define DEFAULT_VERSION             1
 #define HEAD_SIZE                   (sizeof(mmtp_packet_t)-1)
@@ -448,105 +466,8 @@ int set_packet_quit(char* buffer) {
     ```
     
 
-
 <br />
-### 3) MMTP多屏消息处理
-扩展multi-screen协议, 具体参照以下代码实现。
-
-<!--lang:c++-->
-```
-/**
- * start multi-screen server: 
- *      Main Screen(chrome) => mmtp process
- * @param bcast: broadcast address
- */
-int set_packet_ms_start(char* buffer, const char* bcast) {
-    mmtp_packet_t* pkt = init_header(buffer, E_Mmtp_MS_Start, bcast);
-    assert_return(pkt, -1);
-    return HEAD_SIZE + pkt->size;
-}
-
-/**
- * start multi-screen server for some asset ids: 
- *      main screen(chrome) => mmtp process
- * @param bcast: broadcast address
- * @param ids: asset ids
- * @param npts: npt(normal play time) for asset id
- * @param num: the number of asset ids
- */
-int set_packet_ms_share(char* buffer, const char* bcast, const char* ids[], const char* npts[], int num) {
-    mmtp_packet_t* pkt = init_header(buffer, E_Mmtp_MS_Share, bcast);
-    assert_return(pkt, -1);
-    
-    int pos = 0;
-    char data[MAX_BODY_SIZE];
-    memset(data, 0, sizeof(data));
-    for (int k=0; k < num; k++) {
-        pos += snprintf(data+pos, sizeof(data)-pos, "[%s]:%s", ids[k], npts[k]);
-    }
-    assert_return(pos > 0, -1);
-    
-    pkt->size = pos;
-    memcpy(pkt->body, data, pkt->size);
-    return HEAD_SIZE + pkt->size;
-}
-
-/**
- * Request sharing from main screen: 
- *      Second screen => mmtp process => Main Screen(chrome)
- * @param bcast: broadcast address
- */
-int set_packet_ms_request(char* buffer, const char* bcast) {
-    mmtp_packet_t* pkt = init_header(buffer, E_Mmtp_MS_Request, bcast);
-    assert_return(pkt, -1);
-    return HEAD_SIZE + pkt->size;
-}
-
-
-```
-
-<br />
-<mark>**多屏交互示例**</mark>:
-
-- 启动主屏server:
-    
-    - 主屏chrome端: 发送消息到mmtp启动server.
-    
-    ```
-    char buffer[1024*16];
-    mmtp_packet_t* pkt = (mmtp_packet_t*) buffer;
-    char bcast[] = "224.0.0.10:2500";
-
-    int len = set_packet_ms_start(buffer, bcast);
-    SendToMMTP(buffer, len);
-    ```
-
-- 共享分发主屏数据:
-    
-    - 主屏chrome端: 发送消息告诉server将分享的数据: 组播地址, asset ids和播放时间npt.
-    - Server端: 将收到的组合成新的html/xml, 以便副屏请求时发送该数据.
-
-    ```
-    char* ids[] = {"video1_asset1", "video2_asset2"};
-    char* npts[] = {"npt1", "npt2"};
-    int len = set_packet_ms_share(buffer, bcast, ids, npts, 2);
-    SendToMMTP(buffer, len);
-    ```
-
-- 副屏发送该请求数据消息:
-    
-    - 副屏chrome端: 发送Server这个数据共享消息,
-    - Server端: 处理这个消息(并将上面生成的新html/ci发送给副屏),并转发这个消息到主屏chrome,
-    - 主屏chrome端: 处理该消息(例如plungeOut的三种状态sharable/dynamic/complementary).
-
-    ```
-    int len = set_packet_ms_request(buffer, bcast);
-    SendToMMTP(buffer, len);
-    ```
-
-
-<br />
-### 4) Receiver Process
+### 3) 实现方式
     接收端为独立进程，如何实现由其自主决定，通常有两种模式，下面将分别介绍。
     
 ---
@@ -588,7 +509,7 @@ int set_packet_ms_request(char* buffer, const char* bcast) {
 
 
 <br />
-### 5) 伪代码示例(基于上述模式2) - 部分参考网上代码
+### 4) 伪代码示例(基于上述模式2) - 部分参考网上代码
 ```
 #include <stdio.h>
 #include <string.h>
@@ -695,6 +616,124 @@ int main(int argc, char* argv[]) {
 }
 ```
 
+
+
+<br />
+3 多屏消息处理
+-------------
+扩展multi-screen(简称ms)协议, 具体参照以下代码实现。
+
+<!--lang:c++-->
+```
+/**
+ * The type of multi-screen message.
+ */
+enum ms_type_t{
+    E_MS_Unknown    = 0,
+    
+    E_MS_Request    = 0x0001,
+    E_MS_CiHtml     = 0x0002,
+    
+    E_MS_All        = 0xffff
+};
+
+/** 
+ * ms packet structure: not include <body>.
+ */
+#prarma pack(1)
+typedef struct ms_packet_t {
+    char        ver;
+    int         type;       //> packet type
+    char        bcast[64];  //> broadcast address
+    int         size;       //> packet body size
+    char        body[1];
+}ms_packet_t;
+#prarma pack(0)
+
+#define DEFAULT_VERSION             1
+#define HEAD_SIZE                   (sizeof(mmtp_packet_t)-1)
+#define MAX_BODY_SIZE               (1024*16-HEAD_SIZE)
+#define assert_return(p, v)         if(!(p)) return (v);
+
+
+/**
+ * Init commom header of ms packet
+ */
+mmtp_packet_t* init_header(char* buffer, int type, const char* bcast) {
+    ms_packet_t* pkt = (ms_packet_t*) buffer;
+    assert_return(pkt, NULL);
+    memset((void*)pkt, 0, HEAD_SIZE);
+    pkt->ver  = DEFAULT_VERSION;
+    pkt->type = type;
+    if (bcast && strlen(bcast) > 0) {
+        strncpy(pkt->bcast, bcast, sizeof(pkt->bcast)-1);
+    }
+    return pkt;
+}
+```
+
+<!--lang:c++-->
+```
+/**
+ * Request sharing from main screen.
+ */
+int set_packet_ms_request(char* buffer) {
+    ms_packet_t* pkt = init_header(buffer, E_MS_Request, NULL);
+    assert_return(pkt, -1);
+    return HEAD_SIZE + pkt->size;
+}
+
+/**
+ * send multi-screen(ms) html/xml to second screen
+ * @param bcast: broadcast address
+ * @param ci: ci xml content
+ * @param html: html content
+ */
+int set_packet_ms_cihtml(char* buffer, const char* bcast, const char* ci, const char* html) {
+    ms_packet_t* pkt = init_header(buffer, E_MS_CiHtml, bcast);
+    assert_return(pkt, -1);
+    
+    int pos = 0;
+    char data[MAX_BODY_SIZE];
+    memset(data, 0, sizeof(data));
+    if (ci && strlen(ci) > 0)
+        pos += snprintf(data+pos, sizeof(data)-pos, "[ci]:%s\n", ci);
+    if (html && strlen(html) > 0)
+        pos += snprintf(data+pos, sizeof(data)-pos, "[html]:%s\n", html);
+    assert_return(pos > 0, -1);
+    
+    pkt->size = pos;
+    memcpy(pkt->body, data, pkt->size);
+    return HEAD_SIZE + pkt->size;
+}
+
+```
+
+<br />
+<mark>**多屏交互示例**</mark>:
+
+- 副屏发送该请求数据消息:
+
+    ```
+    char buffer[1024*16];
+    ms_packet_t* pkt = (ms_packet_t*) buffer;
+    
+    int len = set_packet_ms_request(buffer);
+    SendToMainScreen(buffer, len);
+    ```
+
+- 发送多屏cihtml数据
+    
+    ```
+    char bcast[] = "224.0.0.10:2500";
+    char ci[] = "<area>...</area>";
+    char html[] = "<html>...</html>";
+    
+    int len = set_packet_ms_cihtml(buffer, bcast, ci, html);
+    SendToSecondScreen(buffer, len);
+    ```
+
+
 <br />
 ### 6) TODO简单替代方案
 
@@ -703,8 +742,9 @@ int main(int argc, char* argv[]) {
     - 更新组播地址
 - 2.chrome添加新模块处理多屏
     - 监听本地UDP端口
-    - 接收其它chrome多屏请求(UDP)
     - 发送多屏html/xml给chrome副屏(UDP)
+        -  直接使用原xml/html, 然后通过proto=ms区分是主屏/副屏
+    - 接收其它chrome多屏请求(UDP)
     - 向其它chrome主屏发送chrome多屏请求(mmt://another-chrome-address?proto=ms)
 
 
