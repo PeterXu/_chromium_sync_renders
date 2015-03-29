@@ -50,6 +50,7 @@ Media Cast & MMTP Receiver
 #### c) 支持mmtp协议列表
 - chrome频道列表获取(每个列表包含一个组播地址)
     - mmt://apache-address/index.html?<mark>proto=http</mark>
+    - http://apache-address/index.html
 - 组播地址格式(同上)
     - mmt://224.1.1.101:6080?<mark>proto=mmtp</mark>
 - audio/video/image格式(同上)
@@ -390,7 +391,7 @@ enum ms_type_t{
 /** 
  * ms packet structure: not include <body>.
  */
-#prarma pack(1)
+#pragma pack(1)
 typedef struct ms_packet_t {
     char        ver;
     int         type;       //> packet type
@@ -398,10 +399,10 @@ typedef struct ms_packet_t {
     int         size;       //> packet body size
     char        body[1];
 }ms_packet_t;
-#prarma pack(0)
+#pragma pack()
 
 #define DEFAULT_VERSION             1
-#define HEAD_SIZE                   (sizeof(mmtp_packet_t)-1)
+#define HEAD_SIZE                   (sizeof(ms_packet_t)-1)
 #define MAX_BODY_SIZE               (1024*16-HEAD_SIZE)
 #define assert_return(p, v)         if(!(p)) return (v);
 
@@ -409,7 +410,7 @@ typedef struct ms_packet_t {
 /**
  * Init commom header of ms packet
  */
-mmtp_packet_t* init_header(char* buffer, int type, const char* bcast) {
+ms_packet_t* init_header(char* buffer, int type, const char* bcast) {
     ms_packet_t* pkt = (ms_packet_t*) buffer;
     assert_return(pkt, NULL);
     memset((void*)pkt, 0, HEAD_SIZE);
