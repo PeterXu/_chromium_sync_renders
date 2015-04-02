@@ -2,6 +2,7 @@
 ROOT=`pwd`
 CHROME=$ROOT/src
 OS=`uname`
+PROFILE=Debug
 
 
 function gsync() {
@@ -28,7 +29,7 @@ function initenv() {
 
     GYP_DEFINES+=" fastbuild=1"
     GYP_DEFINES+=" target_arch=x64"
-    GYP_DEFINES+=" CONFIGURATION_NAME=Debug"
+    GYP_DEFINES+=" CONFIGURATION_NAME=$PROFILE"
     GYP_DEFINES+=" ffmpeg_branding=Chrome proprietary_codecs=1"
     export GYP_DEFINES="$GYP_DEFINES"
 }
@@ -59,20 +60,44 @@ function build() {
     targets=""
     #targets+="blink "
     targets+="chrome chrome_sandbox "
-    targets+="cast_receiver cast_sender cast_simulator "
-    targets+="cast_tools cast_benchmarks tap_proxy udp_proxy "
+    #targets+="cast_receiver cast_sender cast_simulator "
+    #targets+="cast_tools cast_benchmarks tap_proxy udp_proxy "
     #targets+="generate_barcode_video generate_timecode_audio "
     #targets+="mcs_probe maptsvdifftool bitmaptools image_diff minidump_stackwalk "
-    cd $CHROME && ninja -C out/Debug $targets -j16 || exit 1
+    cd $CHROME && ninja -C out/$PROFILE $targets -j8 || exit 1
 
     # needed if you build on NFS!
-    cd $CHROME && sudo cp -f out/Debug/chrome_sandbox /usr/local/sbin/chrome-devel-sandbox 
+    cd $CHROME && sudo cp -f out/$PROFILE/chrome_sandbox /usr/local/sbin/chrome-devel-sandbox 
     if [ -f /usr/local/sbin/chrome-devel-sandbox ]; then
         sudo chown root:root /usr/local/sbin/chrome-devel-sandbox
         sudo chmod 4755 /usr/local/sbin/chrome-devel-sandbox
     fi
 }
 
+function package() {
+    srcdir=$CHROME/out/$PROFILE
+    [ ! -d $srcdir ] && return
+
+    dstdir=/tmp/chrome_latest
+    mkdir -p $dstdir
+    [ ! -d $dstdir ] && return
+    rm -rf $dstdir/*
+
+    cp -f $srcdir/* $dstdir/ 2>/dev/null
+    cp -rf $srcdir/{extensions,gcm_store,lib,locales,plugins} $dstdir/
+    cp -rf $srcdir/{resources,ui} $dstdir/
+
+    # extensions
+    cp -rf $CHROME/chrome/common/extensions/docs/examples/api/ciscreen $dstdir/extensions/
+
+    #tar cfz chrome_latest.tar.gz $dstdir
+}
+
+
+if [ $# -eq 1 -a "$1" = "package" ]; then
+    package
+    exit 0
+fi
 
 
 gsync
