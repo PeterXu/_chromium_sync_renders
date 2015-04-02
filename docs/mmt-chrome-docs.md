@@ -8,55 +8,47 @@ Media Cast & MMTP Receiver
 
 ### 1) MMT数据地址格式
 
-#### a) 通过本地媒体读取数据
-
-- html和cixml文件本地路径
-    - /tmp/index.html
-    - /tmp/ci.xml
-- chrome获取html数据地址格式
-    - mmt://localhost/tmp/index.html
-- chrome获取ci数据
-    - 由mmt模块直接读取文件/tmp/ci.xml
-- audio/video/image地址格式
-    - cixml中格式(sequence_num可选)
-        - mmt://localhost/tmp/Channel1?<mark>sequence_num=1-230&type=audio</mark>
-        - mmt://localhost/tmp/Channel1?sequence_num=1-230&type=video
-        - mmt://localhost/tmp/test.mp4?type=image
-    - chrome内部数据格式: <mark>sequence_num=1-230&type=audio&htmlid=xx&tabid=xx</mark>
-- subset xml地址格式
-    - cixml中格式: mmt://localhost/tmp/subset1.xml
-    - chrome内部数据格式: <mark>type=ci&htmlid=xx&tabid=xx</mark>
-
-#### b) 通过mmtp协议读取数据
-
-- chrome组播地址格式
-    - mmt://224.1.1.101:6080?<mark>proto=mmtp</mark>
-- html和主cixml数据获取
-    - 由mmtp接收端直接获取得到(回调函数)
-- audio/video/image获取格式
+#### a) chrome频道列表Html获取(包含组播地址)
+- mmt://apache-address/index.html?<mark>proto=http</mark>
+- http://apache-address/index.html
+    
+#### b) 组播地址格式(MMTP协议)
+- mmtp协议
+    - mmt://224.1.1.101:6080?<mark>proto=mmtp</mark>  
+- cixml/html格式
+    - get from mmtp directly   
+- audio/video/image格式
     - mmt://asset_id1?<mark>proto=mmtp&type=audio</mark>
     - mmt://asset_id2?proto=mmtp&type=video
     - mmt://asset_id3?proto=mmtp&type=image
-    - chrome内部数据格式: <mark>proto=mmtp&type=audio&htmlid=xx&tabid=xx</mark>
-- subset cixml通过http协议获取
-    - 地址格式
-        - mmt://<mark>apache-address</mark>/subset.xml?<mark>proto=extra</mark>
-    - chrome内部数据格式: <mark>proto=extra&type=ci&htmlid=xx&tabid=xx</mark>
-    - 格式更新
-        - 原<mark>proto=extra</mark>依旧支持
-        - 用<mark>proto=http</mark>替代方案
+    - chrome内部数据格式
+        - <mark>proto=mmtp&type=audio&htmlid=xx&tabid=xx</mark>
 
+#### c) 组播地址格式(本地文件)
+- 本地文件
+    - mmt://224.1.1.101:6080/tmp/index.html
+    - /tmp/index.html, /tmp/ci.xml
+- audio/video/image地址格式(sequence_num可选)
+    - mmt://localhost/tmp/Channel1?<mark>sequence_num=1-230&type=audio</mark>
+    - mmt://localhost/tmp/Channel1?sequence_num=1-230&type=video
+    - mmt://localhost/tmp/test.mp4?type=image
+- chrome内部数据格式
+    - <mark>sequence_num=1-230&type=audio&htmlid=xx&tabid=xx</mark>
 
-#### c) 支持mmtp协议列表
-- chrome频道列表获取(每个列表包含一个组播地址)
-    - mmt://apache-address/index.html?<mark>proto=http</mark>
-    - http://apache-address/index.html
-- 组播地址格式(同上)
-    - mmt://224.1.1.101:6080?<mark>proto=mmtp</mark>
-- audio/video/image格式(同上)
-    - mmt://asset_id1?<mark>proto=mmtp&type=audio</mark>
-    - mmt://asset_id2?proto=mmtp&type=video
-    - mmt://asset_id3?proto=mmtp&type=image
+#### d) subset cixml(http协议)
+- 地址格式
+    - mmt://<mark>apache-address</mark>/subset.xml?<mark>proto=extra</mark>
+    - mmt://<mark>apache-address</mark>/subset.xml?<mark>proto=http</mark>
+- chrome内部数据格式
+    - <mark>proto=extra&type=ci&htmlid=xx&tabid=xx</mark>
+    - <mark>proto=http&type=ci&htmlid=xx&tabid=xx</mark>
+
+#### e) subset cixml(本地文件)
+- cixml中格式
+    - mmt://localhost/tmp/subset1.xml
+    - /tmp/subset1.xml
+- chrome内部数据格式
+    - <mark>type=ci&htmlid=xx&tabid=xx</mark>
 
 
 ### 2) MMT协议处理数据流程
@@ -363,11 +355,22 @@ void push_mmtp_media(int res, const char* id, const char* url, const char* fname
 
 ### 1).<mark>**实现功能**</mark>
 
-- 主屏/副屏监听本地UDP端口服务
-- 主屏额外添加一个html form供用户设置分享的副屏IP
-- 主屏接收其它chrome多屏请求(UDP)
-- 主屏发送xml/html给chrome副屏
-- 副屏向主屏发送多屏请求(mmt://multi-screen) - 通过扩展打开页面提供设置主屏IP
+- 主屏监听本地UDP端口服务
+    - 打开任意一个mmt地址 
+        - Listen UDP 9590
+    - 主屏只处理ms元素(browser address)
+        - mmt://224.1.1.101:6080/tmp/index.html?proto=ms
+    - 主屏分享ms元素给远程副屏(Master Button)
+        -  mmt://192.168.1.102:9590?proto=ms0
+        -  reset 'dynamic'/'recept'
+    - 主屏接收副屏请求(UDP 9590)
+        - 回复bcast/xml/html
+
+- 副屏监听本地UDP端口
+    - 打开任意一个mmt地址 
+        - Listen UDP 9590 (mmt协议)
+    - 向主屏发送多屏请求 (Second Button)
+        - mmt://192.168.1.102:9590?proto=ms1
 
 
 ### 2).<mark>**扩展multi-screen(简称ms)协议**</mark>
