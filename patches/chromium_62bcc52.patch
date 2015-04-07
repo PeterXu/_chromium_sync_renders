@@ -21,43 +21,6 @@ index 8fa6763..a0181c4 100644
  /xcodebuild
 +.xtags
 +diff.log
-diff --git a/README.md b/README.md
-new file mode 100644
-index 0000000..2af10b9
---- /dev/null
-+++ b/README.md
-@@ -0,0 +1,31 @@
-+mmt documemts
-+=============
-+
-+# all kinds of url formats
-+
-+## ?proto=mmtp:  
-+    for html resource
-+
-+## ?proto=mmtp&type=audio/video/image[&htmlid=&tabid=]: 
-+    for mmtp's media, must have htmlid added by chromium
-+    [..] added by chromium.
-+
-+## mmtp main xml:
-+    got by API directly in mmt_control
-+
-+## ?proto=extra[&type=ci&htmlid=&tabid=]: 
-+    for subset ci and get it by neon http
-+    [..] added by chromium.
-+
-+## ?[type=ci&htmlid=&tabid=]
-+    for subset ci and get it by local,
-+    [..] added by chromium auto.
-+
-+## default mmt local format
-+    mmt://localhost/ + abs path
-+
-+## right format
-+    <video></video>,  <video /><audio />
-+
-+## support "click", now not support "Click".
-+
 diff --git a/build/common.gypi b/build/common.gypi
 index 30239f1..4d0cefd 100644
 --- a/build/common.gypi
@@ -356,7 +319,7 @@ index 0000000..15a90c6
 +    ]
 +}
 diff --git a/chrome/common/extensions/docs/examples/api/cictrl/res/install_host.sh b/chrome/common/extensions/docs/examples/api/cictrl/res/install_host.sh
-new file mode 100755
+new file mode 100644
 index 0000000..85f19b0
 --- /dev/null
 +++ b/chrome/common/extensions/docs/examples/api/cictrl/res/install_host.sh
@@ -402,7 +365,7 @@ index 0000000..85f19b0
 +
 +echo Native messaging host $HOST_NAME has been installed.
 diff --git a/chrome/common/extensions/docs/examples/api/cictrl/res/native-messaging-cictrl b/chrome/common/extensions/docs/examples/api/cictrl/res/native-messaging-cictrl
-new file mode 100755
+new file mode 100644
 index 0000000..94d6a43
 --- /dev/null
 +++ b/chrome/common/extensions/docs/examples/api/cictrl/res/native-messaging-cictrl
@@ -588,7 +551,7 @@ index 0000000..26aaa64
 +  ]
 +}
 diff --git a/chrome/common/extensions/docs/examples/api/cictrl/res/uninstall_host.sh b/chrome/common/extensions/docs/examples/api/cictrl/res/uninstall_host.sh
-new file mode 100755
+new file mode 100644
 index 0000000..b03bddc
 --- /dev/null
 +++ b/chrome/common/extensions/docs/examples/api/cictrl/res/uninstall_host.sh
@@ -2795,10 +2758,10 @@ index 602eae8..a3d3a73 100644
        "ftp/ftp_auth_cache.cc",
 diff --git a/net/mmt/mmt_control.cc b/net/mmt/mmt_control.cc
 new file mode 100644
-index 0000000..ad96c47
+index 0000000..bf27852
 --- /dev/null
 +++ b/net/mmt/mmt_control.cc
-@@ -0,0 +1,598 @@
+@@ -0,0 +1,620 @@
 +#include "net/mmt/mmt_control.h"
 +#include "net/mmt/mmt_inc.h"
 +
@@ -2931,6 +2894,7 @@ index 0000000..ad96c47
 +
 +MmtControl::MmtControl() : SimpleThread("mmt_control"){
 +    running_ = false;
++    delaythread_.reset(new base::Thread("Control Delay Thread"));
 +}
 +
 +MmtControl::~MmtControl() {
@@ -2943,18 +2907,18 @@ index 0000000..ad96c47
 +    if (!stream) return false;
 +
 +    int tabid = stream->GetTabId();
-+    LOG(INFO) << __func__ << " stream's tabid=" << tabid;
++    //LOG(INFO) << __func__ << " stream's tabid=" << tabid;
 +    if (stream->IsMmtMedia()) {
 +        cixmlptr_t cixml;
-+        cilock_.Acquire();
++       // cilock_.Acquire();
 +        if (cixmls_.find(tabid) != cixmls_.end()) {
-+            LOG(INFO) << __func__ << " find cixml";
++            //LOG(INFO) << __func__ << " find cixml";
 +            cixml = cixmls_[tabid];
 +        }
-+        cilock_.Release();
++        //cilock_.Release();
 +
 +        if (cixml && cixml->parser) {
-+            LOG(INFO) << __func__ << " find xml parser";
++            //LOG(INFO) << __func__ << " find xml parser";
 +            // for clip
 +            auto clip = cixml->parser->GetHtmlClip(stream->GetHtmlId());
 +            stream->SetHtmlClip(clip);
@@ -2976,7 +2940,7 @@ index 0000000..ad96c47
 +    return true; // normal stream
 +}
 +void MmtControl::ProcJobs(ctrl_msg_t& msg) {
-+    joblock_.Acquire();
++    //joblock_.Acquire();
 +    auto iter = jobs_.begin();
 +    for (; iter != jobs_.end(); iter++) {
 +        if (iter->get() == msg.job.get()) {
@@ -2988,7 +2952,7 @@ index 0000000..ad96c47
 +    if (jobs_.size() > 8) {
 +        jobs_.erase(jobs_.begin());
 +    }
-+    joblock_.Release();
++    //joblock_.Release();
 +}
 +void MmtControl::StreamOpen(ctrl_msg_t msg) {
 +    LOG(INFO) << __func__ << " head=" << msg.head << " key=" << msg.key 
@@ -3025,8 +2989,7 @@ index 0000000..ad96c47
 +                    screen_->SendMsg(proto, host, port);
 +                    msg.body = kMmtProtoMs1;
 +                }
-+                Wait(1000);
-+                Push(msg);
++                PushDelay(msg, 1000);
 +                return;
 +            }else {
 +                lsize = res.html.size();
@@ -3034,15 +2997,20 @@ index 0000000..ad96c47
 +        }
 +
 +        if (!ProcStream(stream)) break;
-+        streamlock_.Acquire();
++        //streamlock_.Acquire();
 +        streams_[msg.key] = stream;
-+        streamlock_.Release();
++        //streamlock_.Release();
 +
 +        // waiting and push the msg into queue by return directly
 +        if (lsize < 0) {
 +            if(stream->Prepare(&lsize) == -3) { 
-+                LOG(INFO) << __func__ << " waiting...";
-+                Push(msg);
++                std::string mtype = stream->GetMtype();
++                LOG(INFO) << __func__ << " waiting for mtype=" << mtype;
++                int iret = 1000;
++                if (mtype == kMmtMediaVideo || mtype == kMmtMediaAudio) {
++                    iret = 3000;
++                }
++                PushDelay(msg, iret);
 +                return;
 +            }
 +        }
@@ -3058,12 +3026,12 @@ index 0000000..ad96c47
 +    StreamPtr stream;
 +    //LOG(INFO) << __func__ << " head=" << msg.head << " key=" << key;
 +
-+    streamlock_.Acquire();
++    //streamlock_.Acquire();
 +    auto iter = streams_.find(key);
 +    if (iter != streams_.end()) {
 +        stream = iter->second;
 +    }
-+    streamlock_.Release();
++    //streamlock_.Release();
 +    if (!stream) return;
 +
 +    int tabid = stream->GetTabId();
@@ -3092,7 +3060,7 @@ index 0000000..ad96c47
 +            std::string port = res.bcast.substr(pos+1);;
 +            LOG(INFO) << __func__ << " MmtpStart, host=" << host << " port=" << port;
 +            if (!host.empty() && !port.empty()) {
-+                MmtpStart(host, String2Int(port));
++                MmtpStart(host, String2Int(port), "ci");
 +            }
 +        }
 +    }else {
@@ -3100,8 +3068,10 @@ index 0000000..ad96c47
 +    }
 +
 +    if (iret == -3) { // waiting 
-+        LOG(INFO) << __func__ << " waiting...";
-+        Push(msg);
++        std::string mtype = stream->GetMtype();
++        LOG(INFO) << __func__ << " waiting for mtype=" << mtype;
++        int delay = 100;
++        PushDelay(msg, delay);
 +    }else {
 +        // For mmt://224.1.1.101:6080?proto=mmtp, Set bcast and html for screen.
 +        if (iret > 0) {
@@ -3132,28 +3102,29 @@ index 0000000..ad96c47
 +        cixml->fname = kMmtDefaultXml;
 +    cixml->script.tab = msg.tab;
 +
-+    cilock_.Acquire();
++    //cilock_.Acquire();
 +    cixmls_[tabid] = cixml;
-+    cilock_.Release();
++    //cilock_.Release();
 +}
 +void MmtControl::StreamClose(ctrl_msg_t msg) {
 +    LOG(INFO) << __func__ << " head=" << msg.head << " key=" << msg.key 
 +        << " tabid=" << msg.tab.tab_id;
 +
 +    StreamPtr stream;
-+    streamlock_.Acquire();
++    //streamlock_.Acquire();
 +    StreamPtrs_t::iterator iter = streams_.find(msg.key);
 +    if (iter != streams_.end()) {
 +        stream = iter->second;
 +        streams_.erase(iter);
 +    }
-+    streamlock_.Release();
++    //streamlock_.Release();
 +}
 +void MmtControl::ProcCiXml(cixmlptr_t cixml, int tabid) {
 +    if (!cixml) return;
 +
++    //> Process Mult-Screen Xml;
 +    std::string proto = cixml->script.tab.proto;
-+    bool master = (proto != kMmtProtoMs1 && proto != kMmtProtoMs); // ms1/ms is request slave
++    bool master = (proto != kMmtProtoMs1 && proto != kMmtProtoMs); 
 +    bool master_xml = master;
 +    if (proto == kMmtProtoMsMmtp || proto == kMmtProtoMsLocal) {
 +        master_xml = false;
@@ -3277,20 +3248,20 @@ index 0000000..ad96c47
 +
 +void MmtControl::CheckEvent() {
 +    std::vector<int> tabs;
-+    cilock_.Acquire();
++    //cilock_.Acquire();
 +    for(auto& item: cixmls_) {
 +        tabs.push_back(item.first);
 +    }
-+    cilock_.Release();
++    //cilock_.Release();
 +    
 +    for(auto& tabid: tabs) {
 +        if (tabid <= 0) continue;
 +        cixmlptr_t cixml;
-+        cilock_.Acquire();
++        //cilock_.Acquire();
 +        if (cixmls_.find(tabid) != cixmls_.end()) {
 +            cixml = cixmls_[tabid];
 +        }
-+        cilock_.Release();
++        //cilock_.Release();
 +        ProcEvent(tabid, cixml);
 +    }
 +}
@@ -3338,8 +3309,11 @@ index 0000000..ad96c47
 +
 +void MmtControl::Run() {
 +    LOG(INFO) << __func__ << " begin";
++
 +    running_ = true;
++    delaythread_->Start();
 +    int ms = kMmtLoopInterval;
++
 +    while(loop_) {
 +        // check ci event
 +        CheckEvent();
@@ -3388,21 +3362,32 @@ index 0000000..ad96c47
 +    return true;
 +}
 +
-+int MmtControl::Push(ctrl_msg_t &msg) {
++int MmtControl::Push(ctrl_msg_t& msg) {
 +    LOG(INFO) << __func__ << " head=" << msg.head << " key=" << msg.key;
 +    int iret = net::ERR_IO_PENDING;
 +    queue_.push(msg);
 +    return iret;
 +}
 +
++void MmtControl::DoPush(ctrl_msg_t msg) {
++    Push(msg);
++}
++
++void MmtControl::PushDelay(ctrl_msg_t& msg, int delay) {
++    delaythread_->message_loop_proxy()->PostDelayedTask(
++            FROM_HERE,
++            base::Bind(&MmtControl::DoPush, base::Unretained(this), msg),
++            base::TimeDelta::FromMilliseconds(delay));
++}
++
 +} // namespace mmt
 +
 diff --git a/net/mmt/mmt_control.h b/net/mmt/mmt_control.h
 new file mode 100644
-index 0000000..03c85d4
+index 0000000..80d3fa0
 --- /dev/null
 +++ b/net/mmt/mmt_control.h
-@@ -0,0 +1,218 @@
+@@ -0,0 +1,242 @@
 +#ifndef NET_MMT_MMT_CONTROL_H_
 +#define NET_MMT_MMT_CONTROL_H_
 +
@@ -3559,11 +3544,34 @@ index 0000000..03c85d4
 +    bool Pop(ctrl_msg_t& msg);
 +    int  Push(ctrl_msg_t& msg);
 +
++    void DoPush(ctrl_msg_t msg);
++    void PushDelay(ctrl_msg_t& msg, int delay);
++
 +protected:
-+    // Operations for I/O Stream
++    /**
++     * Process Stream of url I/O by callback of notifying chrome with value:
++     *   0: close the process of current url 
++     *  -1: pending and re-try 
++     *  >0: possible real size
++     *  <-1: failed and maybe crash for debugging
++     */
 +    void StreamOpen(ctrl_msg_t msg);
++
++    /**
++     * Read data from stream to return it to chrome by callback.
++     *  if return -1 - fail. if return 0 - close.
++     *  For audio/video sequence, if current file read EOF, then goto open the next file automatically.
++     */
 +    void StreamRead(ctrl_msg_t msg);
++
++    /**
++     * Close Stream for url.
++     */
 +    void StreamClose(ctrl_msg_t msg);
++
++    /**
++     * Process CI only when get a valid tab id successfully.
++     */
 +    void StreamCi(ctrl_msg_t msg);
 +
 +    // Check CI events.
@@ -3581,14 +3589,15 @@ index 0000000..03c85d4
 +    bool loop_;
 +    bool running_;
 +    std::queue<ctrl_msg_t> queue_;
++    scoped_ptr<base::Thread> delaythread_;
 +
-+    base::Lock joblock_;
++    //base::Lock joblock_;
 +    std::vector<job_refptr_t> jobs_;
 +
-+    base::Lock cilock_;
++    //base::Lock cilock_;
 +    std::map<int, cixmlptr_t> cixmls_;  //> key/value: tabid => cixml_t
 +
-+    base::Lock streamlock_;
++    //base::Lock streamlock_;
 +    StreamPtrs_t streams_;
 +
 +    ScreenPtr screen_; //> multi-screen
@@ -3908,10 +3917,10 @@ index 0000000..78f40de
 +#endif
 diff --git a/net/mmt/mmt_inc.h b/net/mmt/mmt_inc.h
 new file mode 100644
-index 0000000..4bb7974
+index 0000000..c087d25
 --- /dev/null
 +++ b/net/mmt/mmt_inc.h
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,143 @@
 +#ifndef NET_MMT_MMT_INC_H_
 +#define NET_MMT_MMT_INC_H_
 +
@@ -4011,7 +4020,7 @@ index 0000000..4bb7974
 +/**
 + * media/proto constants
 + */
-+extern const char kMmtNtpServer[];
++extern const char kMmtNtpServer[];      //> ntp server
 +
 +extern const char kMmtMediaAudio[];
 +extern const char kMmtMediaVideo[];
@@ -4019,16 +4028,17 @@ index 0000000..4bb7974
 +extern const char kMmtMediaHtml[];
 +extern const char kMmtMediaCI[];
 +
-+extern const char kMmtProtoMmtp[];
++extern const char kMmtProtoMmtp[];      //> Get data from mmtp receiver
 +extern const char kMmtProtoLocal[];
-+extern const char kMmtProtoExtra[];
-+extern const char kMmtProtoHttp[];
++extern const char kMmtProtoExtra[];     //> the same with http
++extern const char kMmtProtoHttp[];      //> http for subset xml/index.html
 +
-+extern const char kMmtProtoMs[];   //> just activate ms module
++extern const char kMmtProtoMs[];        //> multi-screen: Listen for remote sharing.
 +extern const char kMmtProtoMsMmtp[];    //> ms mmtp
 +extern const char kMmtProtoMsLocal[];   //> ms local
-+extern const char kMmtProtoMs0[];   //> multi-screen master
-+extern const char kMmtProtoMs1[];   //> multi-screen slave
++
++extern const char kMmtProtoMs0[];       //> multi-screen: Share to remote.
++extern const char kMmtProtoMs1[];       //> multi-screen: Request to share.
 +extern const char kMmtDefaultUrl[];
 +
 +// for url query
@@ -5929,10 +5939,10 @@ index 0000000..a7015d0
 +#endif
 diff --git a/net/mmt/mmt_stream.cc b/net/mmt/mmt_stream.cc
 new file mode 100644
-index 0000000..dc881ae
+index 0000000..0cfe876
 --- /dev/null
 +++ b/net/mmt/mmt_stream.cc
-@@ -0,0 +1,627 @@
+@@ -0,0 +1,663 @@
 +#include "net/mmt/mmt_stream.h"
 +#include "net/mmt/mmt_inc.h"
 +#include "net/mmt/mpu/mp4.h"
@@ -5990,25 +6000,21 @@ index 0000000..dc881ae
 +
 +namespace mmt {
 +
-+static MmtpStream* g_mmtp = nullptr;
++static MmtpStream* g_mmtp = new MmtpStream;
 +
-+void MmtpStart(const std::string ip, int port) {
-+    if (!g_mmtp) {
-+        g_mmtp = new MmtpStream;
-+    }
-+    g_mmtp->Start(ip, port);
++void MmtpStart(const std::string ip, int port, const std::string mtype) {
++    g_mmtp->Start(ip, port, mtype);
 +}
 +void MmtpStop() {
-+    if (!g_mmtp) return;
-+    g_mmtp->Stop();
++    if (g_mmtp) g_mmtp->Stop();
 +}
 +int MmtpPop(mmtp_info_t& mmtp) {
-+    if (!g_mmtp) return -1;
-+    return g_mmtp->Pop(mmtp);
++    int iret = -1;
++    if (g_mmtp) iret = g_mmtp->Pop(mmtp);
++    return iret;
 +}
 +void MmtpPush(const mmtp_info_t& mmtp) {
-+    if (!g_mmtp) return;
-+    g_mmtp->Push(mmtp);
++    if (g_mmtp) g_mmtp->Push(mmtp);
 +}
 +
 +void MmtpRecvCallback(struct mmtp_rinfo_t* rinfo) {
@@ -6062,13 +6068,16 @@ index 0000000..dc881ae
 +
 +//=======================================
 +
-+mmtp_media_t::mmtp_media_t() {}
++mmtp_media_t::mmtp_media_t() {
++    first = true;
++}
 +mmtp_media_t::~mmtp_media_t() {}
 +
 +//=======================================
 +
 +MmtpStream::MmtpStream(){
 +    running_ = false;
++    audiostart_ = false;
 +}
 +MmtpStream::~MmtpStream(){
 +}
@@ -6080,20 +6089,43 @@ index 0000000..dc881ae
 +    int index = mmtp.index;
 +    std::string key = mmtp.id + "@" + mmtp.mtype;
 +
-+    lock_.Acquire();
 +    do {
++        int isize = 0;
++        mmtp_media_ptr_t media;
++
++        lock_.Acquire();
 +        auto iter = mlist_.find(key);
-+        if (iter == mlist_.end()) break;
++        if (iter != mlist_.end()) {
++            media = iter->second;
++            isize = media->flist.size();
++        }
++        lock_.Release();
 +
-+        mmtp_media_ptr_t media = iter->second;
-+        if (media->flist.empty()) break;
-+        mmtp = media->flist.back();
++        if (isize <= 0) break;
 +
-+        // pop this file which will not be used next time
++#if 0
++        if (!audiostart_) {
++            if(mmtp.mtype == kMmtMediaVideo) {
++                LOG(INFO) << __func__ << " video isize=" << isize << " first=" << media->first;
++                if (media->first) {
++                    if (isize < 10) break;
++                    media->first = false;
++                }
++            }else if (mmtp.mtype == kMmtMediaAudio) {
++                LOG(INFO) << __func__ << " audio isize=" << isize;
++                audiostart_ = true;
++            }
++        }
++#endif
++
++        // To get the old media file, which will not be used next time
++        medialock_.Acquire();
++        mmtp = media->flist.front();
 +        if (index < 0 || mmtp.index <= index) {
-+            media->flist.pop_back();
++            media->flist.pop();
 +            //TODO: remove this file when done
 +        }
++        medialock_.Release();
 +
 +        if (index < 0 || mmtp.index == index) {
 +            iret = 0;   // found the sequence index
@@ -6101,42 +6133,55 @@ index 0000000..dc881ae
 +            iret = 1;   // exists but not required this time
 +        }
 +    }while(false);
-+    lock_.Release();
 +    return iret;
 +}
 +
 +void MmtpStream::Push(const mmtp_info_t& mmtp) {
++    mmtp_media_ptr_t media;
 +    std::string key = mmtp.id + "@" + mmtp.mtype;
 +
 +    lock_.Acquire();
 +    auto iter = mlist_.find(key);
 +    if (iter != mlist_.end()) {
-+        mmtp_media_ptr_t media = iter->second;
-+        media->flist.insert(media->flist.begin(), mmtp);
++        media = iter->second;
 +    }else {
-+        mmtp_media_ptr_t media = new mmtp_media_t;;
-+        media->flist.push_back(mmtp);
++        media = new mmtp_media_t;;
 +        mlist_[key] = media;
++    }
++    lock_.Release();
++    if (!media) return;
++
++    medialock_.Acquire();
++    if (media->flist.size() >= 100) {
++        media->flist.pop();
++    }
++    media->flist.push(mmtp);
++    medialock_.Release();
++}
++
++void MmtpStream::Start(const std::string ip, int port, const std::string mtype) {
++    lock_.Acquire();
++    if (!running_) {
++        LOG(INFO) << "MmtpStream::Start";
++        init_mmtp();
++        set_mmtp_callback(MmtpRecvCallback);
++        set_mmtp_assets(NULL, NULL, 0);
++        start_mmtp(ip.c_str(), port);
++        running_ = true;
 +    }
 +    lock_.Release();
 +}
 +
-+void MmtpStream::Start(const std::string ip, int port) {
-+    if (running_) return;
-+    LOG(INFO) << "MmtpStream::Start";
-+    init_mmtp();
-+    set_mmtp_callback(MmtpRecvCallback);
-+    set_mmtp_assets(NULL, 0);
-+    start_mmtp(ip.c_str(), port);
-+    running_ = true;
-+}
-+
 +void MmtpStream::Stop() {
-+    if (!running_) return;
-+    LOG(INFO) << "MmtpStream::Stop";
-+    stop_mmtp();
-+    uninit_mmtp();
-+    running_ = false;
++    lock_.Acquire();
++    if (running_) {
++        LOG(INFO) << "MmtpStream::Stop";
++        stop_mmtp();
++        uninit_mmtp();
++        running_ = false;
++    }
++    lock_.Release();
++    audiostart_ = false;
 +}
 +
 +} // namespace mmt
@@ -6253,7 +6298,7 @@ index 0000000..dc881ae
 +        lret = offmap_[idxcur_.second].total; 
 +    }
 +    if (size)   *size = lret;
-+    LOG(INFO) << __func__ << " lret=" << lret;
++    //LOG(INFO) << __func__ << " lret=" << lret;
 +    return 0;
 +}
 +
@@ -6385,7 +6430,7 @@ index 0000000..dc881ae
 +        std::string host;
 +        GURL2Address(url_, host, port);
 +        // If has been started, have no-op
-+        MmtpStart(host, port);
++        MmtpStart(host, port, mtype_);
 +
 +        mmtp_info_t mmtp;
 +        mmtp.id = "";  // TODO: now do not support url in mmtp receiver.
@@ -6441,7 +6486,7 @@ index 0000000..dc881ae
 +        LOG(INFO) << __func__ << " invalid proto=" << proto_;
 +        return nullptr;
 +    }
-+    LOG(INFO) << __func__ << " fname=" << fname << " index=" << index;
++    //LOG(INFO) << __func__ << " fname=" << fname << " index=" << index;
 +
 +    // open and get file size for the 1st seq
 +    file_ = fopen(fname.c_str(), "rb");
@@ -6468,7 +6513,7 @@ index 0000000..dc881ae
 +    offmap_[index] = offset_t(offset, total, lret);
 +    if(first_) first_ = false;
 +
-+    LOG(INFO) << __func__ << " index=" << index
++    LOG(INFO) << __func__ << " index=" << index << " fname=" << fname
 +        << " off=" << offmap_[index].off << " total=" << offmap_[index].total << " required=" << lret;
 +    idxcur_.second = index;
 +    lasterr_ = 0;
@@ -6549,6 +6594,7 @@ index 0000000..dc881ae
 +    tabid_ = -1;
 +    first_ = true;
 +    init_ = false;
++    firstwait_ = true;
 +
 +    init_ = ParseSequence();
 +    return init_;
@@ -6562,10 +6608,10 @@ index 0000000..dc881ae
 +} // namespace mmt
 diff --git a/net/mmt/mmt_stream.h b/net/mmt/mmt_stream.h
 new file mode 100644
-index 0000000..2639959
+index 0000000..97c644b
 --- /dev/null
 +++ b/net/mmt/mmt_stream.h
-@@ -0,0 +1,183 @@
+@@ -0,0 +1,191 @@
 +#ifndef NET_MMT_MMT_STREAM_H_
 +#define NET_MMT_MMT_STREAM_H_
 +
@@ -6605,7 +6651,8 @@ index 0000000..2639959
 + */
 +struct mmtp_media_t : public base::RefCounted<mmtp_media_t>{
 +    mmtp_media_t();
-+    std::vector<mmtp_info_t> flist;
++    bool first;
++    std::queue<mmtp_info_t> flist;
 +
 +protected:
 +    friend class base::RefCounted<mmtp_media_t>;
@@ -6634,19 +6681,21 @@ index 0000000..2639959
 +    /**
 +     * for mmtp control
 +     */
-+    void Start(const std::string ip, int port);
++    void Start(const std::string ip, int port, const std::string mtype);
 +    void Stop();
 +
 +private:
 +    bool running_;
 +    base::Lock lock_;
++    base::Lock medialock_;
 +    std::map<std::string, mmtp_media_ptr_t> mlist_; // id@mtype => ..
++    bool audiostart_;
 +};
 +
 +/**
 + * The control of mmtp receiver
 + */
-+void MmtpStart(const std::string ip, int port);
++void MmtpStart(const std::string ip, int port, const std::string mtype);
 +void MmtpStop();
 +int  MmtpPop(mmtp_info_t& mmtp);
 +void MmtpPush(const mmtp_info_t& mmtp);
@@ -6718,6 +6767,9 @@ index 0000000..2639959
 +    int GetTabId() {return tabid_;}
 +    bool SetHtmlClip(std::string clip);
 +
++    void SetFirstWait(bool wait) {firstwait_ = wait;}
++    bool GetFirstWait() {return firstwait_;}
++
 +protected:
 +    friend class base::RefCounted<Stream>;
 +    virtual ~Stream();
@@ -6738,6 +6790,8 @@ index 0000000..2639959
 +    std::vector<std::pair<int,int> > idxclip_; // idx range from ci xml
 +    std::map<int, offset_t> offmap_; //> read offset for current media index
 +    FILE *file_;
++
++    bool firstwait_;
 +
 +    DISALLOW_COPY_AND_ASSIGN(Stream);
 +};
@@ -6984,7 +7038,7 @@ index 0000000..be89646
 +} // namespace mmt
 diff --git a/net/mmt/mmtp/DList.c b/net/mmt/mmtp/DList.c
 new file mode 100644
-index 0000000..34fd494
+index 0000000..594da25
 --- /dev/null
 +++ b/net/mmt/mmtp/DList.c
 @@ -0,0 +1,276 @@
@@ -6997,7 +7051,7 @@ index 0000000..34fd494
 +	PNode p = NULL;
 +	p = (PNode)malloc(sizeof(Node));
 +	p->data=(unsigned char *)malloc(1500*sizeof(unsigned char));
-+	memset((void*)p->data,0,1500);
++	//memset((void*)p->data,0,1500);
 +	if(p!=NULL)
 +	{
 +		//p->data = i;
@@ -7266,7 +7320,7 @@ index 0000000..34fd494
 +}
 diff --git a/net/mmt/mmtp/DList.h b/net/mmt/mmtp/DList.h
 new file mode 100644
-index 0000000..1918862
+index 0000000..0ad67ef
 --- /dev/null
 +++ b/net/mmt/mmtp/DList.h
 @@ -0,0 +1,84 @@
@@ -7290,7 +7344,7 @@ index 0000000..1918862
 +{
 +	PNode head;		/*指向头节点*/
 +	PNode tail;		/*指向尾节点*/
-+	int size;
++	volatile int size;
 +}DList;
 +
 +/*分配值为i的节点，并返回节点地址*/
@@ -7356,12 +7410,12 @@ index 0000000..1918862
 +#endif
 diff --git a/net/mmt/mmtp/Makefile b/net/mmt/mmtp/Makefile
 new file mode 100644
-index 0000000..7655df9
+index 0000000..42b634a
 --- /dev/null
 +++ b/net/mmt/mmtp/Makefile
 @@ -0,0 +1,21 @@
 +TARGET = client
-+OBJS = DList.o Mlist.o client.o getfile.o ini.o mmt.o ringq.o send.o ../mpu/stream.o ../mpu/mp4.o
++OBJS = DList.o Mlist.o client.o getfile.o ini.o mmt.o ringq.o send.o mkdir.o mmtp.o ../mpu/stream.o ../mpu/mp4.o
 +CFLAGS = -I../../../ -D_TEST
 +LDFLAGS = -lm -lpthread
 +
@@ -7760,23 +7814,23 @@ index 0000000..89d5028
 +
 diff --git a/net/mmt/mmtp/client.c b/net/mmt/mmtp/client.c
 new file mode 100644
-index 0000000..2712687
+index 0000000..563e4b5
 --- /dev/null
 +++ b/net/mmt/mmtp/client.c
-@@ -0,0 +1,1071 @@
+@@ -0,0 +1,1070 @@
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <strings.h>
 +#include <sys/types.h>
 +#include <sys/socket.h>
++#include <sys/stat.h>
 +#include <arpa/inet.h>
 +#include <unistd.h>
 +#include <time.h>
-+#include<signal.h>
++#include <signal.h>
 +#include <pthread.h>
 +#include <unistd.h>
 +#include <sched.h>
-+#define BACKLOG 2
 +
 +#include "../mpu/stream.h"
 +#include "../mpu/mp4.h"
@@ -7790,42 +7844,52 @@ index 0000000..2712687
 +
 +#include "mmt.h"
 +#include "getfile.h"
++#include "mkdir.h"
 +#include "send.h"
 +#include "ringq.h"
 +#include "DList.h"
 +#include "mmtp.h"
 +
 +
-+#define MCAST_PORT_TEST 6080
-+#define MCAST_ADDR_TEST "224.1.1.101"
++//#define MCAST_PORT 6080
++//#define MCAST_ADDR "224.1.1.101"
++
 +int MCAST_PORT;
-+char MCAST_ADDR[260];
-+
-+#define MAX_ASSET_NUM   128
-+int g_asset_num = 0;
-+char g_asset_ids[MAX_ASSET_NUM][260];
-+mmtp_callback_t g_mmtp_cb;
-+
-+
-+
-+#define BACKLOG 2
++char MCAST_ADDR[64];
 +
 +extern void sig_proccess(int signo);
 +extern void sig_pipe(int signo);
 +
-+void *producter_f (void *arg);					/*生产者*/
++void make_file(char *mpu_name, char *data, int len );
++int check_mpu_iscomplete(mpu_buf_t mpu_buf);
++
++void *producter_f (mmt_socket_t *mmt_socket);					/*生产者*/
 +void *mpu_consumer_f (void *arg);					/*消费者*/
 +void *signal_consumer_f (void *arg);					/*消费者*/
 +int signal_buffer_has_item=0;							/*缓冲区计数值*/
 +int mpu_buffer_has_item=0;							/*缓冲区计数值*/
++
 +pthread_mutex_t mpu_mutex;							/*互斥区*/
 +pthread_mutex_t signal_mutex;							/*互斥区*/
 +
++pa_message_t pa_message;  //信令控制MPU恢复,全局变量
++pthread_mutex_t message_mutex;							/*互斥区*/
++int message_counter=0;
++
 +int g_running = 1;								/*线程运行控制*/
-+int g_sock = -1;
++mmt_socket_t  g_mmt_socket;
++
++
++int g_pktid_init = -1;
++int g_asset_num = 0;
++char g_asset_ids[MAX_ASSET_NUM][260];
++char g_asset_clips[MAX_ASSET_NUM][260];
++int g_pktid_asset[MAX_ID_NUM]; // pktid => g_asset_ids
++
 +
 +DList *signal_buff_list = NULL;
 +DList *mpu_buff_list = NULL;
++mpu_buf_t mpu_buf;
 +
 +#define BUFF_LEN 1500
 +#define CLOSESOCKET(fd) if(fd > 0){close(fd);fd=-1;}
@@ -7834,23 +7898,27 @@ index 0000000..2712687
 +void sig_proccess(int signo)
 +{
 +	printf("catch a exit signal\n");
-+	CLOSESOCKET(g_sock);
++	CLOSESOCKET(g_mmt_socket.ss);
 +	exit(0);
 +}
 +
 +void  sig_pipe(int signo)
 +{
 +	printf("catch a SIGPIPE signal\n");
-+	CLOSESOCKET(g_sock);
++	CLOSESOCKET(g_mmt_socket.ss);
 +	exit(0);
 +}
-+
 +
 +#ifdef _TEST
 +int main(int argc, char *argv[])
 +{
 +    init_mmtp();
-+    start_mmtp(MCAST_ADDR_TEST, MCAST_PORT_TEST);
++
++    const char* ids[] = {"loveapartment_audio", "loveapartment_video"};
++    const char* clips[] = {"1-100", ""};
++    set_mmtp_assets(ids, clips, 2);
++
++    start_mmtp("224.1.1.101",6080);
 +	while(1)
 +		sleep(1);
 +    stop_mmtp();
@@ -7860,87 +7928,8 @@ index 0000000..2712687
 +}
 +#endif
 +
-+void *producter_f (void *arg)					/*生产者线程程序*/
++void *producter_f (mmt_socket_t *mmt_socket)					/*生产者线程程序*/
 +{
-+//初始化
-+	int ss;
-+
-+	struct sockaddr_in local_addr;
-+	int err=-1;
-+	pid_t pid;
-+	//挂接sigint信号
-+	signal(SIGINT,sig_proccess);
-+	signal(SIGPIPE,sig_pipe);
-+
-+	//建立套接字s
-+	ss=socket(AF_INET, SOCK_DGRAM,0);
-+	if(ss<0)
-+	{
-+		printf("socket error\n");
-+		return NULL;
-+	}
-+
-+//	//设置服务器地址
-+//	bzero(&server_addr,sizeof(server_addr));
-+//	//memset(&server_addr,0,sizeof(server_addr));
-+//	server_addr.sin_family=AF_INET;
-+//	//server_addr.sin_addr.s_addr=htonl(INADDR_ANY);
-+//	server_addr.sin_addr.s_addr=inet_addr(SERVER_ADDR);
-+//	server_addr.sin_port =htons(SERVER_PORT);
-+//	bzero(&(server_addr.sin_zero),8);
-+
-+	//设置本机地址
-+	bzero(&local_addr,sizeof(local_addr));
-+	//memset(&server_addr,0,sizeof(server_addr));
-+	local_addr.sin_family=AF_INET;
-+	//server_addr.sin_addr.s_addr=htonl(INADDR_ANY);
-+//	local_addr.sin_addr.s_addr=inet_addr(CLIENT_ADDR);
-+	local_addr.sin_addr.s_addr=htonl(INADDR_ANY);
-+	local_addr.sin_port =htons(MCAST_PORT);
-+	bzero(&(local_addr.sin_zero),8);
-+
-+
-+	//绑定本地地址到套接字
-+	err=bind(ss,(struct sockaddr*)&local_addr,sizeof(struct sockaddr_in));
-+	//printf("ready for listening");
-+	if(err<0)
-+	{
-+		printf("bind error \n");
-+		return  NULL;
-+	}
-+	printf("ready for listening\n");
-+
-+	//	//设置BLOADCASE选项
-+	//    int ret;
-+	//    int so_broadcast = 1 ;
-+	//    ret = setsockopt(ss, SOL_SOCKET, SO_BROADCAST, &so_broadcast,sizeof(so_broadcast));
-+	//	if(ret ==-1)
-+	//	{
-+	//		printf("setsockopt failed\n");
-+	//		return -1;
-+	//	}
-+
-+	/*设置回环许可*/
-+	int loop = 1 ;
-+	err = setsockopt(ss, IPPROTO_IP, IP_MULTICAST_LOOP,&loop, sizeof(loop));
-+	if(err ==-1)
-+	{
-+		printf("setsockopt failed:setsockopt():IP_MULTICAST_LOOP\n");
-+		return NULL;
-+	}
-+
-+	/*加入多播组*/
-+	struct ip_mreq mreq;
-+	mreq.imr_multiaddr.s_addr = inet_addr(MCAST_ADDR); /*多播地址*/
-+	mreq.imr_interface.s_addr = htonl(INADDR_ANY); /*网络接口为默认*/
-+
-+	/*将本机加入多播组*/
-+	err = setsockopt(ss, IPPROTO_IP, IP_ADD_MEMBERSHIP,&mreq, sizeof(mreq));
-+	if (err < 0)
-+	{
-+		printf("setsockopt():IP_ADD_MEMBERSHIP");
-+		return NULL;
-+	}
 +
 +	int n;
 +	char buff[BUFF_LEN];
@@ -7948,23 +7937,38 @@ index 0000000..2712687
 +	PNode p = NULL;
 +
 +	int lastpacket,last_flag=1;
-+    g_sock = ss;
 +	while(g_running)								/*没有设置退出值*/
 +	{
-+		len=sizeof(local_addr);
-+		n=recvfrom(g_sock,buff,BUFF_LEN,0,(struct sockaddr *)&local_addr,&len);
++		len=sizeof(mmt_socket->addr);
++		n=recvfrom(mmt_socket->ss,buff,BUFF_LEN,0,(struct sockaddr *)&mmt_socket->addr,&len);
 +		if(n <=0)
 +		{
 +			perror("recv error");
++			fprintf(stderr, "%s \n", strerror(errno));
++//			printf("stderr:[%s]\n",stderr);
 +            break;
 +		}
++
 +		mmt_packet_header_t mmt_header;
 +		mpu_packet_header_t mpu_header;
 +		read_mmtp_header(&mmt_header,buff);
++
++
++
 +//		printf("mmt_header->packet_counter%d\n",mmt_header.packet_counter);
++//		FILE *log;
++//		if((log=fopen("log.txt","a+"))==NULL)
++//			{
++//				printf("not open3");
++//				exit(0);
++//			}
++//		printf("not open2");
++//		fprintf(log," %d \n", mmt_header.packet_counter);
++//		fclose(log);
 +
 +		if(mmt_header.packet_counter!=lastpacket+1 && last_flag!=0)
 +		{
++			printf("lastpacket:%d,  mmt_header.packet_counter%d, loss %d\n",lastpacket,mmt_header.packet_counter,mmt_header.packet_counter-lastpacket);
 +			puts ("packet loss");
 +//			exit (EXIT_FAILURE);
 +		}
@@ -7976,31 +7980,38 @@ index 0000000..2712687
 +		}
 +		lastpacket=mmt_header.packet_counter;
 +		last_flag--;
++//		continue;
 +		if(mmt_header.type==2)
 +		{
++			Position node = MakeNode(buff);
++
 +			pthread_mutex_lock (&signal_mutex);			/*进入互斥区*/
 +			//缓存5000个包
-+			if(GetSize(signal_buff_list)==5000)
-+			{
-+				//删除第一个节点
-+				free(DelFirst(signal_buff_list));
-+				signal_buffer_has_item--;						/*增加计数值*/
-+				printf("溢出signal，总数量:%d\n",signal_buffer_has_item); 	/*打印信息*/
-+			}
 +			p=GetTail(signal_buff_list);
-+			InsAfter(signal_buff_list,p,MakeNode(buff));
-+			p = p->next;
++			InsAfter(signal_buff_list,p,node);
 +//			printf("mmt_header->packet_counter%d\n",mmt_header.packet_counter);
 +//			printf("%d\n",mmt_header.packet_counter);
 +//			printf("size%d\n",GetSize(signal_buff_list));
-+			signal_buffer_has_item++;						/*增加计数值*/
++//			signal_buffer_has_item++;						/*增加计数值*/
 +//			printf("生产signal，总数量:%d\n",signal_buffer_has_item); 	/*打印信息*/
 +			pthread_mutex_unlock(&signal_mutex);			/*离开互斥区*/
-+
 +		}
 +
-+		if(mmt_header.type==0)
++		if(mmt_header.type==0) 
 +		{
++            if (g_pktid_init < 0) {
++                printf("g_pktid_init < 0\n");
++                continue;
++            }
++
++            int packet_id = mmt_header.packet_id;
++            if (packet_id < 0 || g_pktid_asset[packet_id] < 0) {
++                printf ("packet_id < 0 or no asset\n");
++                continue;
++            }
++
++			Position node = MakeNode(buff);
++
 +			pthread_mutex_lock (&mpu_mutex);			/*进入互斥区*/
 +			//缓存5000个包
 +			if(GetSize(mpu_buff_list)==5000)
@@ -8011,7 +8022,7 @@ index 0000000..2712687
 +//				printf("溢出mpu，总数量:%d\n",mpu_buffer_has_item); 	/*打印信息*/
 +			}
 +			p=GetTail(mpu_buff_list);
-+			InsAfter(mpu_buff_list,p,MakeNode(buff));
++			InsAfter(mpu_buff_list,p,node);
 +			p = p->next;
 +			read_mmtp_header(&mmt_header,buff);
 +
@@ -8022,16 +8033,11 @@ index 0000000..2712687
 +			mpu_buffer_has_item++;						/*增加计数值*/
 +//			printf("生产mpu，总数量:%d\n",mpu_buffer_has_item); 	/*打印信息*/
 +			pthread_mutex_unlock(&mpu_mutex);			/*离开互斥区*/
-+
-+
 +		}
-+
-+//		if(buffer_has_item==100)
-+//			pthread_exit((void *)3);
 +	}
 +
-+	err = setsockopt(g_sock, IPPROTO_IP, IP_DROP_MEMBERSHIP,&mreq, sizeof(mreq));
-+	CLOSESOCKET(g_sock);
++//	err = setsockopt(g_sock, IPPROTO_IP, IP_DROP_MEMBERSHIP,&mreq, sizeof(mreq));
++//	CLOSESOCKET(g_sock);
 +    return NULL;
 +}
 +
@@ -8040,801 +8046,848 @@ index 0000000..2712687
 +	PNode p = NULL;
 +	unsigned char *signal_buf;
 +	u_int32_t signal_seekpoint=0;
-+	pa_message_t pa_message;
++	int signal_size = 0;
++	unsigned char buff[BUFF_LEN];
++
 +	while(g_running)								/*没有设置退出值*/
 +	{
-+		pthread_mutex_lock(&signal_mutex);				/*进入互斥区*/
-+		while(g_running && GetSize(signal_buff_list)>1)
++		//pthread_mutex_lock(&signal_mutex);				/*进入互斥区*/
++		signal_size = GetSize(signal_buff_list);
++		//pthread_mutex_unlock(&signal_mutex);				/*进入互斥区*/
++		if (signal_size <= 0) {
++			usleep(1000*100);
++			continue;
++		}
++
++		if(signal_size >= 5000)
 +		{
-+			//signal
-+			p=GetHead(signal_buff_list);
-+			p=p->next;
-+			unsigned char buff[BUFF_LEN];
-+			memcpy(buff,p->data,BUFF_LEN);
-+			mmt_packet_header_t mmt_header;
-+			read_mmtp_header(&mmt_header,(const char*)buff);
-+			if(mmt_header.type==2)
++			pthread_mutex_lock(&signal_mutex);
++			//删除第一个节点
++			free(DelFirst(signal_buff_list));
++	//				signal_buffer_has_item--;						/*增加计数值*/
++	//				printf("溢出signal，总数量:%d\n",signal_buffer_has_item); 	/*打印信息*/
++			pthread_mutex_unlock(&signal_mutex);
++			continue;
++		}
++
++		p=GetHead(signal_buff_list);
++		p=p->next;
++		memcpy(buff,p->data,BUFF_LEN);
++
++		//signal
++		mmt_packet_header_t mmt_header;
++		read_mmtp_header(&mmt_header,(const char*)buff);
++		if(mmt_header.type==2)
++		{
++			signal_header_t signal_header;
++			read_signal_header(&signal_header,(const char*)&buff[MMTPh_BUFF_LEN]);
++			if(signal_header.f_i==0)
 +			{
-+				signal_header_t signal_header;
-+				read_signal_header(&signal_header,(const char*)&buff[MMTPh_BUFF_LEN]);
-+				if(signal_header.f_i==0)
++					;
++			}
++			if(signal_header.f_i==1)
++			{
++				if(signal_header.H==0)
 +				{
-+						;
-+				}
-+				if(signal_header.f_i==1)
-+				{
-+					if(signal_header.H==0)
++					//need realize 32 bit signal head later on
++					read_pa_message_header(&pa_message,(const char*)&buff[MMTPh_BUFF_LEN+signalh_BUFF_LEN]);
++					signal_buf= (unsigned  char*) malloc((pa_message.length+PAh_BUFF_LEN)*sizeof( unsigned  char));
++					if(signal_buf==NULL)
 +					{
-+						//need realize 32 bit signal head later on
-+						read_pa_message_header(&pa_message,(const char*)&buff[MMTPh_BUFF_LEN+signalh_BUFF_LEN]);
-+						signal_buf= (unsigned  char*) malloc((pa_message.length+PAh_BUFF_LEN)*sizeof( unsigned  char));
-+						if(signal_buf==NULL)
-+						{
-+								puts ("Memory allocation failed.");
-+								 exit (EXIT_FAILURE);
-+						}
++							puts ("Memory allocation failed.");
++							 exit (EXIT_FAILURE);
++					}
 +//						printf("init mem\n");
 +//						printf("pa_message.length%d\n",pa_message.length);
-+						memcpy(&signal_buf[signal_seekpoint] , &buff[MMTPh_BUFF_LEN+signalh_BUFF_LEN] , signal_header.MSG_length1);
-+						signal_seekpoint=signal_seekpoint+signal_header.MSG_length1;
-+					}
-+					if(signal_header.H==1)
-+					{
-+						read_pa_message_header(&pa_message,(const char*)&buff[MMTPh_BUFF_LEN+signalh_BUFF_LEN]);
-+						signal_buf= (unsigned  char*) malloc((pa_message.length)*sizeof( unsigned  char));
-+						memcpy(&signal_buf[signal_seekpoint] , &buff[MMTPh_BUFF_LEN+signalh_BUFF_LEN] , signal_header.MSG_length2);
-+						signal_seekpoint=signal_seekpoint+signal_header.MSG_length2;
-+					}
-+				}
-+				if(signal_header.f_i==2)
-+				{
 +					memcpy(&signal_buf[signal_seekpoint] , &buff[MMTPh_BUFF_LEN+signalh_BUFF_LEN] , signal_header.MSG_length1);
 +					signal_seekpoint=signal_seekpoint+signal_header.MSG_length1;
 +				}
-+				if(signal_header.f_i==3)
++				if(signal_header.H==1)
 +				{
++					read_pa_message_header(&pa_message,(const char*)&buff[MMTPh_BUFF_LEN+signalh_BUFF_LEN]);
++					signal_buf= (unsigned  char*) malloc((pa_message.length)*sizeof( unsigned  char));
++					memcpy(&signal_buf[signal_seekpoint] , &buff[MMTPh_BUFF_LEN+signalh_BUFF_LEN] , signal_header.MSG_length2);
++					signal_seekpoint=signal_seekpoint+signal_header.MSG_length2;
++				}
++			}
++			if(signal_header.f_i==2)
++			{
++				memcpy(&signal_buf[signal_seekpoint] , &buff[MMTPh_BUFF_LEN+signalh_BUFF_LEN] , signal_header.MSG_length1);
++				signal_seekpoint=signal_seekpoint+signal_header.MSG_length1;
++			}
++			if(signal_header.f_i==3)
++			{
 +//					printf("signal_header.f_i==3\n");
 +//					printf("seekpoint%d\n",signal_seekpoint);
 +//					printf("signal_header.MSG_length1%d\n",signal_header.MSG_length1);
-+					memcpy(&signal_buf[signal_seekpoint] , &buff[MMTPh_BUFF_LEN+signalh_BUFF_LEN] , signal_header.MSG_length1);
-+					signal_seekpoint=0;
-+					//if PA message
-+					read_pa_message(&pa_message,(const char*)&signal_buf[0]);
-+					//接受完整的PA message
++				memcpy(&signal_buf[signal_seekpoint] , &buff[MMTPh_BUFF_LEN+signalh_BUFF_LEN] , signal_header.MSG_length1);
++				signal_seekpoint=0;
++				//if PA message
++//					if(&pa_message != NULL)
++//					free_pa_message(&pa_message);
++				
++                if (g_pktid_init < 0) 
++                { 
++                    pthread_mutex_lock(&message_mutex);				/*进入互斥区*/
++                    if (message_counter==0)
++                    {
++                        read_pa_message(&pa_message,(const char*)&signal_buf[0]);
++						message_counter=1;
 +
++                        MP_table_asset_t* assets = pa_message.mp_table.MP_table_asset;
++                        int num = pa_message.mp_table.number_of_assets;
++                        if (assets && num > 0) {
++                            int k;
++                            const char* asset_ids[] = {"loveapartment_audio", "loveapartment_video"};
++                            for (k=0; k < num; k++) {
++                            #if 1
++                                assets[k].asset_id = asset_ids[k];
++                                assets[k].packet_id = k;
++                            #endif
++
++                                char* asset_id = assets[k].asset_id;
++                                int packet_id = assets[k].packet_id;
++                                if (!asset_id || packet_id < 0) continue;
++
++                                int pos;
++                                for (pos=0; pos < g_asset_num; pos++) {
++                                    if (strcmp(g_asset_ids[pos], asset_id) == 0) {
++                                        g_pktid_asset[packet_id] = pos; // you can get asset id from g_asset_ids[pos]
++                                        printf ("find asset:%s - pktid=%d - pos=%d\n", asset_id, packet_id, pos);
++                                    }
++                                }
++                            }
++                            g_pktid_init = 0;
++                            printf ("g_pktid_init OK\n");
++                        }
++                    }
++				    pthread_mutex_unlock(&message_mutex);				/*进入互斥区*/
++				}
 +//					printf("finished recive signal\n");
 +
-+					if(signal_buf != NULL)
-+					{
-+						free(signal_buf);
-+						signal_buf=NULL;
++				if(signal_buf != NULL)
++				{
++					free(signal_buf);
++					signal_buf=NULL;
 +//						printf("free signal_buf\n");
-+					}
-+					//释放资源
-+					free_pa_message(&pa_message);
 +				}
++				int i;
++				for (i=0;i<pa_message.mpi_table.PI_content_count;i++)
++				{
++                    char pfname[260];
++                    snprintf(pfname, 260, "%s/%s", MMTP_CACHE,
++                        (char *)pa_message.mpi_table.PI_content[i].PI_content_name_byte);
++					make_file(pfname,(char*)pa_message.mpi_table.PI_content[i].PI_content_byte,
++                        pa_message.mpi_table.PI_content[i].PI_content_length);
++					printf("finished recive a ci - %d - %s\n", i, 
++                        (const char *)pa_message.mpi_table.PI_content[i].PI_content_name_byte);
 +
++                    int res = Res_Html;
++                    if (strstr(pfname, ".xml")) res = Res_CI;
++					push_mmtp_cihtml(res, pfname);
++				}
++				//释放资源
++				pthread_mutex_lock(&message_mutex);				/*进入互斥区*/
++				if (message_counter==1)
++				{
++						free_pa_message(&pa_message);
++						message_counter=0;
++				}
++				pthread_mutex_unlock(&message_mutex);				/*进入互斥区*/
 +			}
-+			//删除读取的第一个节点
-+			free(DelFirst(signal_buff_list));
-+			signal_buffer_has_item--;						/*减小计数值*/
-+//			printf("消费信令，总数量:%d\n",signal_buffer_has_item);	/*打印信息*/
-+		}
 +
++		}
++		//删除读取的第一个节点
++		pthread_mutex_lock(&signal_mutex);
++		free(DelFirst(signal_buff_list));
++		//signal_buffer_has_item--;						/*减小计数值*/
++//			printf("消费信令，总数量:%d\n",signal_buffer_has_item);	/*打印信息*/
 +		pthread_mutex_unlock(&signal_mutex);			/*离开互斥区*/
-+		usleep(50);
++		usleep(1000);
 +	}
 +    return NULL;
 +}
 +
 +void *mpu_consumer_f(void *arg)						/*消费者线程程序*/
 +{
-+	//init a  mpu_buf and a seekpoint
-+//	unsigned char *mpu_buf;
-+//	u_int32_t mpu_seekpoint=0;
-+
-+//	//init a  mpu_meta_buf and a seekpoint
-+//	unsigned char *mpu_meta_buf;
-+//	u_int32_t mpu_meta_seekpoint=0;
-+//
-+//	//init a  frag_meta_buf and a seekpoint
-+//	unsigned char *frag_meta_buf;
-+//	u_int32_t frag_meta_seekpoint=0;
-+//
-+//	//init a  *mfu_buf and a seekpoint
-+//	//unsigned char *mfu_buf;
-+//	u_int32_t mfu_seekpoint=0;
-+//
-+//	unsigned char *muli_buf;
-+//	u_int32_t muli_seekpoint=0;
-+
-+
-+	//init a ring queue
-+	RINGQ rq, * p_queue;
-+	int i,data;
-+
-+	p_queue = &rq;
-+	ringq_init(p_queue);
-+
-+	//init a double list
-+	DList *plist = NULL;
 +	PNode p = NULL;
-+	PNode q = NULL;
-+
-+	DList *mpu_consumer_list = NULL;
-+	mpu_consumer_list=InitList();
-+
-+//mpu_buf_t数组,保存待恢复的mpu,然后过滤,需要写过滤规则,这地方暂时还没写!!!!!!
-+	mpu_buf_t *mpu_list;
-+// init_mpu_list(&mpu_list);
-+
-+
-+	mpu_buf_t mpu_buf;
 +	init_mpu_buf(&mpu_buf);
-+	int mpufilter=0;
++	unsigned char buff[BUFF_LEN];
++
 +	while(g_running)								/*没有设置退出值*/
 +	{
-+		int mpu_consumer_couter=0;
 +		mmt_packet_header_t mmt_header;
 +		mpu_packet_header_t mpu_header;
 +		mfu_time_packet_header_t mfu_time_header;
-+		unsigned char buff[BUFF_LEN];
-+		pthread_mutex_lock(&mpu_mutex);				/*进入互斥区*/
++		usleep(100);
++
 +//		printf("1111生产mpu，总数量:%d\n",mpu_buffer_has_item); 	/*打印信息*/
 +		if(GetSize(mpu_buff_list)>0)
 +		{
++			pthread_mutex_lock(&mpu_mutex);				/*进入互斥区*/
 +			p=GetHead(mpu_buff_list);
 +			p=p->next;
 +			memcpy(buff,p->data,BUFF_LEN);
++			free(DelFirst(mpu_buff_list));
++			pthread_mutex_unlock(&mpu_mutex);			/*离开互斥区*/
++
 +			read_mmtp_header(&mmt_header,(const char*)buff);
 +			read_mpu_header(&mpu_header,(const char*)&buff[MMTPh_BUFF_LEN]);
 +			read_mfu_time_header(&mfu_time_header,(const char*)&buff[MMTPh_BUFF_LEN+MPUh_BUFF_LEN]);
-+			InsFirst(mpu_consumer_list,MakeNode((const char*)buff));
-+			free(DelFirst(mpu_buff_list));
-+			if(mpu_header.FT==2) {};
-+//			printf("consume 	mmt_header.packet_counter:%d , mpu_header.MPU_sequence_number %d ,mfu_time_header.sample_number: %d \n",mmt_header.packet_counter,mpu_header.MPU_sequence_number,mfu_time_header.sample_number);
-+//			printf("consume		mmt_header.packet_counter:%d , mpu_header.MPU_sequence_number %d \n",mmt_header.packet_counter,mpu_header.MPU_sequence_number);
-+//			p=GetHead(mpu_buff_list);
-+//			int counter=0;
-+//			while(p->next != NULL)
-+//			{
-+////				printf("copy GetSize(mpu_buff_list):%d\n",GetSize(mpu_buff_list)); 	/*打印信息*/
-+//				p=p->next;
-+//				memcpy(buff,p->data,BUFF_LEN);
-+//				read_mmtp_header(&mmt_header,buff);
-+//				read_mpu_header(&mpu_header,&buff[MMTPh_BUFF_LEN]);
-+//				if(mmt_header.packet_id==1 )
-+//				{
-+//					counter++;
-+//				}
-+//
-+//			}
-+//			printf("debug packet_id counter:%d\n",counter);
-+//			//MPU
-+//			p=GetHead(mpu_buff_list);
-+//
-+//			while(p->next != NULL)
-+//			{
-+////				printf("copy GetSize(mpu_buff_list):%d\n",GetSize(mpu_buff_list)); 	/*打印信息*/
-+//				p=p->next;
-+//				memcpy(buff,p->data,BUFF_LEN);
-+//				read_mmtp_header(&mmt_header,buff);
-+//				read_mpu_header(&mpu_header,&buff[MMTPh_BUFF_LEN]);
-+//
-+////				printf("debug packet_id: mmt_header.packet_id%d\n",mmt_header.packet_id);
-+//				if(mmt_header.packet_id==1)
-+//				{
-+//					printf("debug packet_id: mmt_header.packet_counter%d mmt_header.packet_id%d\n",mmt_header.packet_counter,mmt_header.packet_id);
-+//
-+////					if(GetSize(mpu_consumer_list) == 0)
-+////					{
-+////						printf("GetSize(mpu_consumer_list) == 0\n");
-+////						InsFirst(mpu_consumer_list,MakeNode(buff));
-+////					}
-+////					else
-+////					{
-+//
-+//						InsAfter(mpu_consumer_list,GetTail(mpu_consumer_list),MakeNode(buff));
-+////					}
-+////					//删除该节点节点
-+////					//第一个
-+//					if(p->previous==GetHead(mpu_buff_list))
-+//					{
-+//						printf("1 FIRST GetSize(mpu_buff_list):%d\n",GetSize(mpu_buff_list)); 	/*打印信息*/
-+//						q = p->next;
-+////						printf("2 FIRST GetSize(mpu_buff_list):%d\n",GetSize(mpu_buff_list)); 	/*打印信息*/
-+//						free(DelFirst(mpu_buff_list));
-+//
-+//						if(q != NULL)
-+//						{
-+//							p = q->previous;
-+//						}
-+//
-+//					}
-+//					else
-+//					{
-+//						if(p==GetTail(mpu_buff_list))//最后一个
-+//						{
-+//
-+//							Remove(mpu_buff_list);
-+//							p = GetTail(mpu_buff_list);
-+//							printf("LAST GetSize(mpu_buff_list):%d\n",GetSize(mpu_buff_list)); 	/*打印信息*/
-+//						}
-+//						else//中间
-+//						{
-+//							q = p->next;
-+//							RemovePnext(mpu_buff_list,p->previous);
-+//							p = q->previous;
-+//							if(p->next == NULL )
-+//							{
-+//								printf("p == NULL\n");
-+//							}
-+////							printf("MID GetSize(mpu_buff_list):%d\n",GetSize(mpu_buff_list)); 	/*打印信息*/
-+//						}
-+//					}
-+//					mpu_buffer_has_item--;						/*减小计数值*/
-+//					mpu_consumer_couter++;
-+////					p = GetTail(mpu_consumer_list);
-+////					read_mmtp_header(&mmt_header,p->data);
-+////					printf("mmt_header.packet_counter%d\n",mmt_header.packet_counter);
-+//					if(p->next == NULL )
-+//							{
-+//								printf("p == NULL\n");
-+//							}
-+////					printf("消费mpu，总数量:%d\n",mpu_buffer_has_item);	/*打印信息*/
-+//
-+//				}
-+//			}
-+//			printf("总共消费:%d个mpu，\n",mpu_consumer_couter);	/*打印信息*/
-+
++		}else {
++			usleep(1000*100);
++			continue;
 +		}
-+		pthread_mutex_unlock(&mpu_mutex);			/*离开互斥区*/
 +
-+
-+		while(g_running && GetSize(mpu_consumer_list)>0)
-+		{
-+//			printf("GetSize(mpu_consumer_list):%d\n",GetSize(mpu_consumer_list)); 	/*打印信息*/
-+			p=GetHead(mpu_consumer_list);
-+			p=p->next;
-+			memcpy(buff,p->data,BUFF_LEN);
-+			read_mmtp_header(&mmt_header,(const char*)buff);
-+//			printf("consumer mmt_header->packet_counter%d mmt_header.packet_id:%d\n",mmt_header.packet_counter,mmt_header.packet_id);
-+			if(mmt_header.packet_id==1)
++			if(1)
 +			{
-+				mpu_packet_header_t mpu_header;
-+				read_mpu_header(&mpu_header,(const char*)&buff[MMTPh_BUFF_LEN]);
-+//				printf("mpu_header.MPU_sequence_number%d\n",mpu_header.MPU_sequence_number);//MPU_sequence_number
-+				if(mpu_header.MPU_sequence_number!=1)
++	//			mpu metadata
++				if(mpu_header.FT==0)
 +				{
-+		//			mpu metadata
-+					if(mpu_header.FT==0)
++					if(mpu_header.f_i==0)
 +					{
-+//						printf("mpu_header.FT==0\n");
-+						if(mpu_header.f_i==0)
++						mpu_buf.packet_id=mmt_header.packet_id;
++						mpu_buf.MPU_sequence_number=mpu_header.MPU_sequence_number;
++						mpu_buf.mpu_metadata_buf.data = (unsigned  char*) malloc((mpu_header.length-6)*sizeof( unsigned  char));
++						if(mpu_buf.mpu_metadata_buf.data==NULL)
 +						{
-+							mpu_buf.packet_id=mmt_header.packet_id;
-+							mpu_buf.MPU_sequence_number=mpu_header.MPU_sequence_number;
-+							mpu_buf.mpu_metadata_buf.data = (unsigned  char*) malloc((mpu_header.length-6)*sizeof( unsigned  char));
-+							if(mpu_buf.mpu_metadata_buf.data==NULL)
-+							{
-+								puts ("Memory allocation failed.");
-+								exit (EXIT_FAILURE);
-+							}
++							puts ("1Memory allocation failed.");
++							exit (EXIT_FAILURE);
++						}
 +
-+							memcpy(&mpu_buf.mpu_metadata_buf.data[0] , &buff[MMTPh_BUFF_LEN+MPUh_BUFF_LEN] , (mpu_header.length-6));
-+							mpu_buf.mpu_metadata_buf.length=mpu_header.length-6;
-+							mpu_buf.mpu_metadata_buf.flag=1;
-+							mpu_buf.mpu_metadata_buf.counter=1;
-+						}
-+						if(mpu_header.f_i==1)
-+						{
-+								;
-+						}
-+						if(mpu_header.f_i==2)
-+						{
-+								;
-+						}
-+						if(mpu_header.f_i==3)
-+						{
-+								;
-+						}
++						memcpy(&mpu_buf.mpu_metadata_buf.data[0] , &buff[MMTPh_BUFF_LEN+MPUh_BUFF_LEN] , (mpu_header.length-6));
++						mpu_buf.mpu_metadata_buf.length=mpu_header.length-6;
++						mpu_buf.mpu_metadata_buf.flag=1;
++						mpu_buf.mpu_metadata_buf.counter=1;
 +					}
-+					//fragment metadata
-+					if(mpu_header.FT==1&&mpu_buf.mpu_metadata_buf.flag==1)
++					if(mpu_header.f_i==1)
 +					{
++							;
++					}
++					if(mpu_header.f_i==2)
++					{
++							;
++					}
++					if(mpu_header.f_i==3)
++					{
++							;
++					}
++				}
++				//fragment metadata
++				if(mpu_header.FT==1&&mpu_buf.mpu_metadata_buf.flag==1)
++				{
 +
-+//						printf("mpu_header.FT==1\n");
++					if(mpu_header.f_i==0)
++					{
++						mpu_buf.fragment_metadata_buf.data= (unsigned  char*) malloc((mpu_header.length-6)*sizeof( unsigned  char));
++						if(mpu_buf.fragment_metadata_buf.data==NULL)
++						{
++							printf("mpu_header.length:%d\n",mpu_header.length);
++							puts ("2Memory allocation failed.");
++							exit (EXIT_FAILURE);
++						}
++						memcpy(&mpu_buf.fragment_metadata_buf.data[0] , &buff[MMTPh_BUFF_LEN+MPUh_BUFF_LEN] , (mpu_header.length-6));
++						mpu_buf.fragment_metadata_buf.length=mpu_header.length-6;
++						mpu_buf.fragment_metadata_buf.flag=1;
++						mpu_buf.fragment_metadata_buf.counter=1;
++
++						//analysis fragmentdata,and decide recieve how many sample
++						mpu_buf.mfu_number=ntohl(*((u_int32_t*)&mpu_buf.fragment_metadata_buf.data[76]));;
++
++						mpu_buf.mfu= (mfu_buf_t *)malloc(sizeof(mfu_buf_t)*mpu_buf.mfu_number);
++						if(mpu_buf.mfu==NULL)
++						{
++							puts ("mpu_buf.mfu Memory allocation failed.");
++							exit (EXIT_FAILURE);
++						}
++						mpu_buf.mfu_sample= (mfu_sample_t *)malloc(sizeof(mfu_sample_t)*mpu_buf.mfu_number);
++						if(mpu_buf.mfu_sample==NULL)
++						{
++							puts ("mfu_sample Memory allocation failed.");
++							exit (EXIT_FAILURE);
++						}
++						//初始化为mfu sample
++						int i;
++						for(i=0;i<mpu_buf.mfu_number;i++)
++						{
++							mpu_buf.mfu_sample[i].sequence_number=0;
++							mpu_buf.mfu_sample[i].trackrefindex=0;
++							mpu_buf.mfu_sample[i].movie_fragment_sequence_number=0;
++							mpu_buf.mfu_sample[i].sample_number=0;
++							mpu_buf.mfu_sample[i].priority=0;
++							mpu_buf.mfu_sample[i].dependency_counter=0;
++							mpu_buf.mfu_sample[i].offset=0;
++							mpu_buf.mfu_sample[i].length=0;
++							mpu_buf.mfu_sample[i].muli_length=11;
++							mpu_buf.mfu_sample[i].muli_name=ATOM_muli;
++							mpu_buf.mfu_sample[i].muli_reserved1=0;
++							mpu_buf.mfu_sample[i].muli_reserved2=0;
++
++						}
++
++						//初始化为mfu分配空间
++
++						for(i=0;i<mpu_buf.mfu_number;i++)
++						{
++							mpu_buf.mfu[i].data= (unsigned  char*) malloc(1500000);
++							if(mpu_buf.mfu[i].data==NULL)
++							{
++								puts ("3Memory allocation failed.");
++								exit (EXIT_FAILURE);
++							}
++							memset(mpu_buf.mfu[i].data,0,1500000);
++							mpu_buf.mfu[i].flag=0;
++							mpu_buf.mfu[i].length=0;
++							mpu_buf.mfu[i].number=0;
++							mpu_buf.mfu[i].counter=0;
++
++						}
++
++					}
++					if(mpu_header.f_i==1)
++					{
++						;
++					}
++					if(mpu_header.f_i==2)
++					{
++						;
++					}
++					if(mpu_header.f_i==3)
++					{
++						;
++					}
++
++				}
++	//			mfu_seekpoint=0;
++				//MFU
++				if(mpu_header.FT==2&&mpu_buf.mpu_metadata_buf.flag==1&&mpu_buf.fragment_metadata_buf.flag==1)
++				{
++					mfu_time_packet_header_t mfu_time_header;
++					read_mfu_time_header(&mfu_time_header,(const char*)&buff[MMTPh_BUFF_LEN+MPUh_BUFF_LEN]);
++//			printf("process 		mmt_header.packet_counter:%d , mpu_header.MPU_sequence_number %d ,mfu_time_header.sample_number: %d \n",mmt_header.packet_counter,mpu_header.MPU_sequence_number,mfu_time_header.sample_number);
++
 +						if(mpu_header.f_i==0)
 +						{
-+//							printf("mpu_header.f_i==0\n");
-+							mpu_buf.fragment_metadata_buf.data= (unsigned  char*) malloc((mpu_header.length-6)*sizeof( unsigned  char));
-+							if(mpu_buf.fragment_metadata_buf.data==NULL)
-+							{
-+								puts ("Memory allocation failed.");
-+								exit (EXIT_FAILURE);
-+							}
-+							memcpy(&mpu_buf.fragment_metadata_buf.data[0] , &buff[MMTPh_BUFF_LEN+MPUh_BUFF_LEN] , (mpu_header.length-6));
-+							mpu_buf.fragment_metadata_buf.length=mpu_header.length-6;
-+							mpu_buf.fragment_metadata_buf.flag=1;
-+							mpu_buf.fragment_metadata_buf.counter=1;
 +
-+							//analysis fragmentdata,and decide recieve how many sample
-+							mpu_buf.mfu_number=ntohl(*((u_int32_t*)&mpu_buf.fragment_metadata_buf.data[76]));;
++							memcpy(&mpu_buf.mfu[mfu_time_header.sample_number].data[0] , &buff[MMTPh_BUFF_LEN+MPUh_BUFF_LEN+MFUh_t_BUFF_LEN] , (mpu_header.length-6-MFUh_t_BUFF_LEN));
++							mpu_buf.mfu[mfu_time_header.sample_number].length=mpu_header.length-6-MFUh_t_BUFF_LEN;
++							mpu_buf.mfu[mfu_time_header.sample_number].flag=1;
++							mpu_buf.mfu[mfu_time_header.sample_number].number=mpu_header.fragment_counter;
++							mpu_buf.mfu[mfu_time_header.sample_number].counter=1;
++							(mpu_buf.mfu_counter)++;
 +
-+							mpu_buf.mfu= (mfu_buf_t *)malloc(sizeof(mfu_buf_t)*mpu_buf.mfu_number);
-+							if(mpu_buf.mfu==NULL)
++//								printf("finished recive a mfu %d\n",mfu_time_header.sample_number);
++
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].sequence_number=mfu_time_header.sample_number+1;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].trackrefindex=0;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].movie_fragment_sequence_number=mfu_time_header.movie_fragment_sequence_number;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].sample_number=mfu_time_header.sample_number;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].priority=mfu_time_header.subsample_priority;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].dependency_counter=mfu_time_header.dependency_counter;
++							if(mfu_time_header.sample_number==0)
 +							{
-+								puts ("Memory allocation failed.");
-+								exit (EXIT_FAILURE);
++								mpu_buf.mfu_sample[mfu_time_header.sample_number].offset=8;
 +							}
-+							mpu_buf.mfu_sample= (mfu_sample_t *)malloc(sizeof(mfu_sample_t)*mpu_buf.mfu_number);
-+							if(mpu_buf.mfu_sample==NULL)
++							else
 +							{
-+								puts ("Memory allocation failed.");
-+								exit (EXIT_FAILURE);
++								mpu_buf.mfu_sample[mfu_time_header.sample_number].offset=mpu_buf.mfu_sample[mfu_time_header.sample_number-1].offset+mpu_buf.mfu[mfu_time_header.sample_number-1].length;
 +							}
 +
-+							//初始化为mfu分配空间
-+							int i;
-+							for(i=0;i<mpu_buf.mfu_number;i++)
++
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].length=mpu_buf.mfu[mfu_time_header.sample_number].length;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_length=11;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_name=ATOM_muli;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_reserved1=0;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_reserved2=0;
++
++
++
++							if(mfu_time_header.sample_number==mpu_buf.mfu_number-1)//LAST MFU
 +							{
-+								mpu_buf.mfu[i].data= (unsigned  char*) malloc(1500000);
-+								if(mpu_buf.mfu[i].data==NULL)
++								int mpu_seek=0;
++								int i;
++								mpu_buf.MPU_sequence_length=mpu_buf.mpu_metadata_buf.length+mpu_buf.fragment_metadata_buf.length+
++										mpu_buf.mfu_sample[mfu_time_header.sample_number].offset+mpu_buf.mfu[mfu_time_header.sample_number].length-8+\
++										mpu_buf.mfu_number*34;
++
++//								printf("mpu_buf.MPU_sequence_length audio:%d\n",mpu_buf.MPU_sequence_length);
++
++								mpu_buf.MPU_sequence_data=(unsigned char*) malloc((mpu_buf.MPU_sequence_length)*sizeof( unsigned  char));
++								if(mpu_buf.MPU_sequence_data==NULL)
 +								{
-+									puts ("Memory allocation failed.");
++									puts ("4MPU_sequence_data Memory allocation failed.");
 +									exit (EXIT_FAILURE);
 +								}
-+								memset(mpu_buf.mfu[i].data,0,1500000);
-+								mpu_buf.mfu[i].flag=0;
-+								mpu_buf.mfu[i].length=0;
-+								mpu_buf.mfu[i].number=0;
-+								mpu_buf.mfu[i].counter=0;
++
++								memcpy(&mpu_buf.MPU_sequence_data[0] , mpu_buf.mpu_metadata_buf.data , mpu_buf.mpu_metadata_buf.length);
++								mpu_seek=mpu_seek+mpu_buf.mpu_metadata_buf.length;
++								memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] , mpu_buf.fragment_metadata_buf.data , mpu_buf.fragment_metadata_buf.length);
++								mpu_seek=mpu_seek+mpu_buf.fragment_metadata_buf.length;
++								for(i=0;i<mpu_buf.mfu_number;i++)
++								{
++									memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] , mpu_buf.mfu[i].data , mpu_buf.mfu[i].length);
++									mpu_seek=mpu_seek+mpu_buf.mfu[i].length;
++								}
++								char mfu_sample_buff[34];
++
++								for(i=0;i<mpu_buf.mfu_number;i++)
++								{
++									init_mfu_sample(&mpu_buf.mfu_sample[i],(unsigned char*)&mfu_sample_buff[0]);
++									memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] ,&mfu_sample_buff[0], 34);
++									mpu_seek=mpu_seek+34;
++								}
++
++								pthread_mutex_lock(&message_mutex);				/*进入互斥区*/
++								if (message_counter==1)
++								{
++									;
++								}
++								//接受完整的PA message
++								pthread_mutex_unlock(&message_mutex);				/*进入互斥区*/
++
++//								char res_dir[100]="./res/";
++//								char mpu_name[100];
++//								char mpu_type[100];
++//								char mpu_dir[100];
++//								sprintf(mpu_name, "lovepartment");
++//								if(mpu_buf.packet_id==0)
++//								{
++//								sprintf(mpu_type, "audio");
++//								}
++//								if(mpu_buf.packet_id==1)
++//								{
++//								sprintf(mpu_type, "video");
++//								}
++//								sprintf(mpu_dir, "%s%s/%s/",res_dir,mpu_name,mpu_type);
++//								sprintf(mpu_name, "%.4d.mp4",mpu_buf.MPU_sequence_number);
++//								make_file((char*)mpu_name,mpu_dir,(char*)mpu_buf.MPU_sequence_data,mpu_buf.MPU_sequence_length);
++//								printf("finished recive a audio mpu :%d\n",mpu_buf.MPU_sequence_number);
++                                
++                                int pos = g_pktid_asset[mpu_buf.packet_id];
++								printf("finished recive a audio mpu :%d - %d - assetpos=%d\n",
++                                    mpu_buf.MPU_sequence_number, mpu_buf.packet_id, pos);
++                                if (pos >= 0 && pos < g_asset_num) {
++								    char mpu_name[260];
++								    snprintf(mpu_name, 260, "%s/%s_%.4d.mp4",
++                                        MMTP_CACHE, g_asset_ids[pos], mpu_buf.MPU_sequence_number);
++                                    make_file((char*)mpu_name,(char*)mpu_buf.MPU_sequence_data,
++                                        mpu_buf.MPU_sequence_length);
++
++                                    int res = Res_Image;
++                                    if (mpu_buf.packet_id==0) res = Res_Audio;
++                                    else if (mpu_buf.packet_id==1) res = Res_Video;
++                                    push_mmtp_media(res, g_asset_ids[pos], "", mpu_name, mpu_buf.MPU_sequence_number);
++                                }
++
++								free_mpu_buf(&mpu_buf );
++								init_mpu_buf(&mpu_buf );
++
 +
 +							}
-+//							printf("hehe\n");
-+//							muli_buf=(unsigned  char*) malloc((sample_number*34)*sizeof( unsigned  char));
++
 +						}
 +						if(mpu_header.f_i==1)
 +						{
-+							;
++
++							memcpy(&mpu_buf.mfu[mfu_time_header.sample_number].data[0] , &buff[MMTPh_BUFF_LEN+MPUh_BUFF_LEN+MFUh_t_BUFF_LEN] , (mpu_header.length-6-MFUh_t_BUFF_LEN));
++							mpu_buf.mfu[mfu_time_header.sample_number].length=(mpu_header.length-6-MFUh_t_BUFF_LEN);
++							mpu_buf.mfu[mfu_time_header.sample_number].number=mpu_header.fragment_counter;
++							mpu_buf.mfu[mfu_time_header.sample_number].counter=1;
++
++//								printf("expect mpu_header.fragment_counter%d\n",mpu_header.fragment_counter);
 +						}
 +						if(mpu_header.f_i==2)
 +						{
-+							;
++
++							memcpy(&mpu_buf.mfu[mfu_time_header.sample_number].data[mpu_buf.mfu[mfu_time_header.sample_number].length] , &buff[MMTPh_BUFF_LEN+MPUh_BUFF_LEN+MFUh_t_BUFF_LEN] , (mpu_header.length-6-MFUh_t_BUFF_LEN));
++							mpu_buf.mfu[mfu_time_header.sample_number].length=mpu_buf.mfu[mfu_time_header.sample_number].length+(mpu_header.length-6-MFUh_t_BUFF_LEN);
++							mpu_buf.mfu[mfu_time_header.sample_number].number=mpu_header.fragment_counter;
++							(mpu_buf.mfu[mfu_time_header.sample_number].counter)++;
 +						}
 +						if(mpu_header.f_i==3)
 +						{
-+							;
-+						}
 +
-+					}
-+		//			mfu_seekpoint=0;
-+					//MFU
-+
-+					if(mpu_header.FT==2&&mpu_buf.mpu_metadata_buf.flag==1&&mpu_buf.fragment_metadata_buf.flag==1)
-+					{
-+//						printf("mpu_header.FT==2\n");
-+						mfu_time_packet_header_t mfu_time_header;
-+						read_mfu_time_header(&mfu_time_header,(const char*)&buff[MMTPh_BUFF_LEN+MPUh_BUFF_LEN]);
-+//						printf("process 		mmt_header.packet_counter:%d , mpu_header.MPU_sequence_number %d ,mfu_time_header.sample_number: %d \n",mmt_header.packet_counter,mpu_header.MPU_sequence_number,mfu_time_header.sample_number);
-+//						if(recive_mfu==mfu_time_header.sample_number)
-+//						{
-+							if(mpu_header.f_i==0)
++							memcpy(&mpu_buf.mfu[mfu_time_header.sample_number].data[mpu_buf.mfu[mfu_time_header.sample_number].length] , &buff[MMTPh_BUFF_LEN+MPUh_BUFF_LEN+MFUh_t_BUFF_LEN] , (mpu_header.length-6-MFUh_t_BUFF_LEN));
++							mpu_buf.mfu[mfu_time_header.sample_number].length=mpu_buf.mfu[mfu_time_header.sample_number].length+(mpu_header.length-6-MFUh_t_BUFF_LEN);
++							mpu_buf.mfu[mfu_time_header.sample_number].number=mpu_header.fragment_counter;
++							(mpu_buf.mfu[mfu_time_header.sample_number].counter)++;
++							if (mpu_buf.mfu[mfu_time_header.sample_number].counter==mpu_header.fragment_counter)
 +							{
-+
-+								memcpy(&mpu_buf.mfu[mfu_time_header.sample_number].data[0] , &buff[MMTPh_BUFF_LEN+MPUh_BUFF_LEN+MFUh_t_BUFF_LEN] , (mpu_header.length-6-MFUh_t_BUFF_LEN));
-+								mpu_buf.mfu[mfu_time_header.sample_number].length=mpu_header.length-6-MFUh_t_BUFF_LEN;
 +								mpu_buf.mfu[mfu_time_header.sample_number].flag=1;
-+								mpu_buf.mfu[mfu_time_header.sample_number].number=mpu_header.fragment_counter;
-+								mpu_buf.mfu[mfu_time_header.sample_number].counter=1;
-+								(mpu_buf.mfu_counter)++;
-+
-+//								printf("finished recive a mfu %d\n",mfu_time_header.sample_number);
-+
-+
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].sequence_number=mfu_time_header.sample_number+1;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].trackrefindex=0;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].movie_fragment_sequence_number=mfu_time_header.movie_fragment_sequence_number;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].sample_number=mfu_time_header.sample_number;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].priority=mfu_time_header.subsample_priority;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].dependency_counter=mfu_time_header.dependency_counter;
-+								if(mfu_time_header.sample_number==0)
-+								{
-+									mpu_buf.mfu_sample[mfu_time_header.sample_number].offset=8;
-+								}
-+								else
-+								{
-+									mpu_buf.mfu_sample[mfu_time_header.sample_number].offset=mpu_buf.mfu_sample[mfu_time_header.sample_number-1].offset+mpu_buf.mfu[mfu_time_header.sample_number-1].length;
-+								}
-+//								mpu_buf.mfu_sample[mfu_time_header.sample_number].offset=mpu_seekpoint;
-+
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].length=mpu_buf.mfu[mfu_time_header.sample_number].length;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_length=11;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_name=ATOM_muli;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_reserved1=0;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_reserved2=0;
-+
-+
-+
-+								if(mfu_time_header.sample_number==mpu_buf.mfu_number-1)//LAST MFU
-+								{
-+									int mpu_seek=0;
-+									int i;
-+									mpu_buf.MPU_sequence_length=mpu_buf.mpu_metadata_buf.length+mpu_buf.fragment_metadata_buf.length+
-+											mpu_buf.mfu_sample[mfu_time_header.sample_number].offset+mpu_buf.mfu[mfu_time_header.sample_number].length-8+\
-+											mpu_buf.mfu_number*34;
-+
-+									printf("mpu_buf.MPU_sequence_length:%d\n",mpu_buf.MPU_sequence_length);
-+
-+									mpu_buf.MPU_sequence_data=(unsigned char*) malloc((mpu_buf.MPU_sequence_length)*sizeof( unsigned  char));
-+									if(mpu_buf.MPU_sequence_data==NULL)
-+									{
-+										puts ("Memory allocation failed.");
-+										exit (EXIT_FAILURE);
-+									}
-+
-+									memcpy(&mpu_buf.MPU_sequence_data[0] , mpu_buf.mpu_metadata_buf.data , mpu_buf.mpu_metadata_buf.length);
-+									mpu_seek=mpu_seek+mpu_buf.mpu_metadata_buf.length;
-+									memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] , mpu_buf.fragment_metadata_buf.data , mpu_buf.fragment_metadata_buf.length);
-+									mpu_seek=mpu_seek+mpu_buf.fragment_metadata_buf.length;
-+									for(i=0;i<mpu_buf.mfu_number;i++)
-+									{
-+										memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] , mpu_buf.mfu[i].data , mpu_buf.mfu[i].length);
-+										mpu_seek=mpu_seek+mpu_buf.mfu[i].length;
-+									}
-+									char mfu_sample_buff[34];
-+
-+									for(i=0;i<mpu_buf.mfu_number;i++)
-+									{
-+										init_mfu_sample(&mpu_buf.mfu_sample[i],(unsigned char*)&mfu_sample_buff[0]);
-+										memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] ,&mfu_sample_buff[0], 34);
-+										mpu_seek=mpu_seek+34;
-+									}
-+
-+									char mpu_filename[100];
-+									sprintf(mpu_filename, "channel_MPU_%.4d.mp4",mpu_buf.MPU_sequence_number);
-+                                    int sequence = mpu_buf.MPU_sequence_number;
-+
-+									FILE *mpu;
-+									if((mpu=fopen(mpu_filename,"w+"))==NULL)
-+									{
-+										printf("not open");
-+										exit(0);
-+									}
-+									fwrite(mpu_buf.MPU_sequence_data,mpu_buf.MPU_sequence_length,1,mpu);
-+									fclose(mpu);
-+                                    push_mmtp_media(Res_Video, "", "", mpu_filename, sequence);
-+
-+									free_mpu_buf(&mpu_buf );
-+									printf("finished recive a mpu - %d\n", mpu_header.FT);
-+
-+								}
-+//								free(mfu_buf);
-+//								if(ringq_poll(p_queue,&recive_mfu)>=0);
-+//									printf("recive_mfu:%d\n",recive_mfu);
-+//								mfu_seekpoint=0;
 +							}
-+							if(mpu_header.f_i==1)
-+							{
-+						//临时注释
-+//								printf("mfu_seekpoint%d\n",mpu_buf.mfu[mfu_time_header.sample_number].length);
-+//								printf("mfu_time_header.offset%d\n",mfu_time_header.offset);
-+//								printf("mpu_header.fragment_counter%d\n",mpu_header.fragment_counter);
-+//								printf("size:%d\n",((mpu_header.fragment_counter)*1500)*sizeof( unsigned  char));
-+	//							mfu_buf= (unsigned  char*) malloc((mpu_header.fragment_counter)*1500);
-+
-+								memcpy(&mpu_buf.mfu[mfu_time_header.sample_number].data[0] , &buff[MMTPh_BUFF_LEN+MPUh_BUFF_LEN+MFUh_t_BUFF_LEN] , (mpu_header.length-6-MFUh_t_BUFF_LEN));
-+								mpu_buf.mfu[mfu_time_header.sample_number].length=(mpu_header.length-6-MFUh_t_BUFF_LEN);
-+								mpu_buf.mfu[mfu_time_header.sample_number].number=mpu_header.fragment_counter;
-+								mpu_buf.mfu[mfu_time_header.sample_number].counter=1;
-+
-+//								printf("expect mpu_header.fragment_counter%d\n",mpu_header.fragment_counter);
-+							}
-+							if(mpu_header.f_i==2)
-+							{
-+//								InsAfter(plist,p,MakeNode(buff));
-+//								p = p->next;
-+//								printf("size%d\n",mpu_header.fragment_counter);
-+//								printf("size%d\n",GetSize(plist));
-+
-+
-+//								printf("mpu_header.f_i==2\n");
-+//								printf("mfu_seekpoint%d\n",mpu_buf.mfu[mfu_time_header.sample_number].length);
-+//								printf("mfu_time_header.offset%d\n",mfu_time_header.offset);
-+								memcpy(&mpu_buf.mfu[mfu_time_header.sample_number].data[mpu_buf.mfu[mfu_time_header.sample_number].length] , &buff[MMTPh_BUFF_LEN+MPUh_BUFF_LEN+MFUh_t_BUFF_LEN] , (mpu_header.length-6-MFUh_t_BUFF_LEN));
-+								mpu_buf.mfu[mfu_time_header.sample_number].length=mpu_buf.mfu[mfu_time_header.sample_number].length+(mpu_header.length-6-MFUh_t_BUFF_LEN);
-+								mpu_buf.mfu[mfu_time_header.sample_number].number=mpu_header.fragment_counter;
-+								(mpu_buf.mfu[mfu_time_header.sample_number].counter)++;
-+							}
-+							if(mpu_header.f_i==3)
-+							{
-+//								InsAfter(plist,p,MakeNode(buff));
-+//								int j;
-+//								Position p = GetHead(plist);
-+//								p = p->next;
-+//								for(j=0;j<GetSize(plist);j++)
-+//								{
-+//									read_mmtp_header(&mmt_header,p->data);
-+//									printf("%dmmt_header->packet_counter%d\n",j,mmt_header.packet_counter);
-+//									p = p->next;
-+//
-+//								}
-+//								printf("size%d\n",GetSize(plist));
-+//								printf("size%d\n",mpu_header.fragment_counter);
-+//
-+//								DestroyList(plist);
-+
-+
-+//								printf("mpu_header.f_i==3\n");
-+//								printf("mfu_seekpoint%d\n",mpu_buf.mfu[mfu_time_header.sample_number].length);
-+//								printf("mfu_time_header.offset%d\n",mfu_time_header.offset);
-+//								printf("finished recive a mfu %d\n",mfu_time_header.sample_number);
-+								memcpy(&mpu_buf.mfu[mfu_time_header.sample_number].data[mpu_buf.mfu[mfu_time_header.sample_number].length] , &buff[MMTPh_BUFF_LEN+MPUh_BUFF_LEN+MFUh_t_BUFF_LEN] , (mpu_header.length-6-MFUh_t_BUFF_LEN));
-+								mpu_buf.mfu[mfu_time_header.sample_number].length=mpu_buf.mfu[mfu_time_header.sample_number].length+(mpu_header.length-6-MFUh_t_BUFF_LEN);
-+								mpu_buf.mfu[mfu_time_header.sample_number].number=mpu_header.fragment_counter;
-+								(mpu_buf.mfu[mfu_time_header.sample_number].counter)++;
-+								if (mpu_buf.mfu[mfu_time_header.sample_number].counter==mpu_header.fragment_counter)
-+								{
-+									mpu_buf.mfu[mfu_time_header.sample_number].flag=1;
-+								}
-+								(mpu_buf.mfu_counter)++;
++							(mpu_buf.mfu_counter)++;
 +//								printf("finished recive a mfu %d\n",mfu_time_header.sample_number);
 +//								printf("expect %d ,finished %d ,mfu_counter %d\n",mpu_header.fragment_counter,mpu_buf.mfu[mfu_time_header.sample_number].counter,mpu_buf.mfu_counter);
 +
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].sequence_number=mfu_time_header.sample_number+1;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].trackrefindex=0;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].movie_fragment_sequence_number=mfu_time_header.movie_fragment_sequence_number;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].sample_number=mfu_time_header.sample_number;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].priority=mfu_time_header.subsample_priority;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].dependency_counter=mfu_time_header.dependency_counter;
-+								if(mfu_time_header.sample_number==0)
-+								{
-+									mpu_buf.mfu_sample[mfu_time_header.sample_number].offset=8;
-+								}
-+								else
-+								{
-+									mpu_buf.mfu_sample[mfu_time_header.sample_number].offset=mpu_buf.mfu_sample[mfu_time_header.sample_number-1].offset+mpu_buf.mfu[mfu_time_header.sample_number-1].length;
-+								}
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].sequence_number=mfu_time_header.sample_number+1;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].trackrefindex=0;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].movie_fragment_sequence_number=mfu_time_header.movie_fragment_sequence_number;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].sample_number=mfu_time_header.sample_number;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].priority=mfu_time_header.subsample_priority;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].dependency_counter=mfu_time_header.dependency_counter;
++							if(mfu_time_header.sample_number==0)
++							{
++								mpu_buf.mfu_sample[mfu_time_header.sample_number].offset=8;
++							}
++							else
++							{
++								mpu_buf.mfu_sample[mfu_time_header.sample_number].offset=mpu_buf.mfu_sample[mfu_time_header.sample_number-1].offset+mpu_buf.mfu[mfu_time_header.sample_number-1].length;
++							}
 +//								mpu_buf.mfu_sample[mfu_time_header.sample_number].offset=mpu_seekpoint;
 +
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].length=mpu_buf.mfu[mfu_time_header.sample_number].length;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_length=11;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_name=ATOM_muli;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_reserved1=0;
-+								mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_reserved2=0;
-+
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].length=mpu_buf.mfu[mfu_time_header.sample_number].length;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_length=11;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_name=ATOM_muli;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_reserved1=0;
++							mpu_buf.mfu_sample[mfu_time_header.sample_number].muli_reserved2=0;
++//							printf("mpu_buf.mfu_sample[mfu_time_header.sample_number].offset:%d+mpu_buf.mfu[mfu_time_header.sample_number].length%d,mpu_buf.mfu_number%d\n",mpu_buf.mfu_sample[mfu_time_header.sample_number].offset,mpu_buf.mfu[mfu_time_header.sample_number].length,mfu_time_header.sample_number);
++//							if(check_mpu_iscomplete(mpu_buf))
++//								{}
++								//printf("uncomplete\n");
 +//								printf("length:%d,offset:%d\n",mpu_buf.mfu_sample[mfu_time_header.sample_number].length,mpu_buf.mfu_sample[mfu_time_header.sample_number].offset);
-+								//MPU接收完整
-+								if(mfu_time_header.sample_number==mpu_buf.mfu_number-1&&mpu_buf.mfu_counter==mpu_buf.mfu_number)
++							//MPU接收完整
++							if(mfu_time_header.sample_number==mpu_buf.mfu_number-1&&mpu_buf.mfu_counter==mpu_buf.mfu_number)
++							{
++								int mpu_seek=0;
++								int i;
++								mpu_buf.MPU_sequence_length=mpu_buf.mpu_metadata_buf.length+mpu_buf.fragment_metadata_buf.length+
++										mpu_buf.mfu_sample[mfu_time_header.sample_number].offset+mpu_buf.mfu[mfu_time_header.sample_number].length-8+\
++										mpu_buf.mfu_number*34;
++
++								mpu_buf.MPU_sequence_data=(unsigned char*) malloc((mpu_buf.MPU_sequence_length)*sizeof( unsigned  char));
++								if(mpu_buf.MPU_sequence_data==NULL)
 +								{
-+									int mpu_seek=0;
-+									int i;
-+									mpu_buf.MPU_sequence_length=mpu_buf.mpu_metadata_buf.length+mpu_buf.fragment_metadata_buf.length+
-+											mpu_buf.mfu_sample[mfu_time_header.sample_number].offset+mpu_buf.mfu[mfu_time_header.sample_number].length-8+\
-+											mpu_buf.mfu_number*34;
-+
-+									mpu_buf.MPU_sequence_data=(unsigned char*) malloc((mpu_buf.MPU_sequence_length)*sizeof( unsigned  char));
-+									if(mpu_buf.MPU_sequence_data==NULL)
-+									{
-+										puts ("Memory allocation failed.");
-+										exit (EXIT_FAILURE);
-+									}
-+
-+									memcpy(&mpu_buf.MPU_sequence_data[0] , mpu_buf.mpu_metadata_buf.data , mpu_buf.mpu_metadata_buf.length);
-+									mpu_seek=mpu_seek+mpu_buf.mpu_metadata_buf.length;
-+									memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] , mpu_buf.fragment_metadata_buf.data , mpu_buf.fragment_metadata_buf.length);
-+									mpu_seek=mpu_seek+mpu_buf.fragment_metadata_buf.length;
-+									for(i=0;i<mpu_buf.mfu_number;i++)
-+									{
-+										memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] , mpu_buf.mfu[i].data , mpu_buf.mfu[i].length);
-+										mpu_seek=mpu_seek+mpu_buf.mfu[i].length;
-+									}
-+									char mfu_sample_buff[34];
-+
-+									for(i=0;i<mpu_buf.mfu_number;i++)
-+									{
-+										init_mfu_sample(&mpu_buf.mfu_sample[i],(unsigned char*)&mfu_sample_buff[0]);
-+										memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] ,&mfu_sample_buff[0], 34);
-+										mpu_seek=mpu_seek+34;
-+									}
-+
-+									mpu_buf.flag=1 ;
-+									char mpu_filename[100];
-+									sprintf(mpu_filename, "channel_MPU_%.4d.mp4",mpu_buf.MPU_sequence_number);
-+                                    int sequence = mpu_buf.MPU_sequence_number;
-+
-+
-+									FILE *mpu;
-+									if((mpu=fopen(mpu_filename,"w+"))==NULL)
-+									{
-+										printf("not open");
-+										exit(0);
-+									}
-+									fwrite(mpu_buf.MPU_sequence_data,mpu_buf.MPU_sequence_length,1,mpu);
-+									fclose(mpu);
-+                                    push_mmtp_media(Res_Video, "", "", mpu_filename, sequence); 
-+
-+									free_mpu_buf(&mpu_buf );
-+									init_mpu_buf(&mpu_buf);
-+									printf("finished recive a mpu - %d\n", mpu_header.FT);
-+
-+
++									puts ("5Memory allocation failed.");
++									exit (EXIT_FAILURE);
 +								}
-+								//接收不完整,缺帧,并且某些帧可能只有部分数据
-+								if(mfu_time_header.sample_number==mpu_buf.mfu_number-1&&mpu_buf.mfu_counter!=mpu_buf.mfu_number)
++
++								memcpy(&mpu_buf.MPU_sequence_data[0] , mpu_buf.mpu_metadata_buf.data , mpu_buf.mpu_metadata_buf.length);
++								mpu_seek=mpu_seek+mpu_buf.mpu_metadata_buf.length;
++								memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] , mpu_buf.fragment_metadata_buf.data , mpu_buf.fragment_metadata_buf.length);
++								mpu_seek=mpu_seek+mpu_buf.fragment_metadata_buf.length;
++								for(i=0;i<mpu_buf.mfu_number;i++)
 +								{
-+//									printf("mpu_buf.MPU_sequence_number%d\n",mpu_buf.MPU_sequence_number);
++									memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] , mpu_buf.mfu[i].data , mpu_buf.mfu[i].length);
++									mpu_seek=mpu_seek+mpu_buf.mfu[i].length;
++								}
++								char mfu_sample_buff[34];
++
++								for(i=0;i<mpu_buf.mfu_number;i++)
++								{
++									init_mfu_sample(&mpu_buf.mfu_sample[i],(unsigned char*)&mfu_sample_buff[0]);
++									memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] ,&mfu_sample_buff[0], 34);
++									mpu_seek=mpu_seek+34;
++								}
++
++								mpu_buf.flag=1 ;
++
++
++
++								pthread_mutex_lock(&message_mutex);				/*进入互斥区*/
++								if (message_counter==1)
++								{
++										free_pa_message(&pa_message);
++										message_counter=0;
++								}
++								//接受完整的PA message
++								pthread_mutex_unlock(&message_mutex);				/*进入互斥区*/
++
++                                int pos = g_pktid_asset[mpu_buf.packet_id];
++								printf("finished recive a vido mpu :%d - %d - assetpos=%d\n",
++                                    mpu_buf.MPU_sequence_number, mpu_buf.packet_id, pos);
++
++                                if (pos >= 0 && pos < g_asset_num) {
++								    char mpu_name[260];
++								    snprintf(mpu_name, 260, "%s/%s_%.4d.mp4",
++                                        MMTP_CACHE, g_asset_ids[pos], mpu_buf.MPU_sequence_number);
++								    make_file((char*)mpu_name,(char*)mpu_buf.MPU_sequence_data,
++                                        mpu_buf.MPU_sequence_length);
++
++                                    int res = Res_Image;
++                                    if (mpu_buf.packet_id==0) res = Res_Audio;
++                                    else if (mpu_buf.packet_id==1) res = Res_Video;
++                                    push_mmtp_media(res, g_asset_ids[pos], "", mpu_name, mpu_buf.MPU_sequence_number);
++                                }
++
++								free_mpu_buf(&mpu_buf );
++								init_mpu_buf(&mpu_buf );
++							}
++							//接收不完整,缺帧,并且某些帧可能只有部分数据
++							if(mfu_time_header.sample_number==mpu_buf.mfu_number-1&&mpu_buf.mfu_counter!=mpu_buf.mfu_number)
++							{
++#if 0//									printf("mpu_buf.MPU_sequence_number%d\n",mpu_buf.MPU_sequence_number);
 +//									printf("mpu_buf.mfu_counter%d, mpu_buf.mfu_number%d\n",mpu_buf.mfu_counter,mpu_buf.mfu_number);
 +
-+									int mpu_seek=0;
-+									int i;
-+									mpu_buf.MPU_sequence_length=mpu_buf.mpu_metadata_buf.length+mpu_buf.fragment_metadata_buf.length+
-+											mpu_buf.mfu_sample[mfu_time_header.sample_number].offset+mpu_buf.mfu[mfu_time_header.sample_number].length-8+\
-+											mpu_buf.mfu_number*34;
++								int mpu_seek=0;
++								int i;
++								mpu_buf.MPU_sequence_length=mpu_buf.mpu_metadata_buf.length+mpu_buf.fragment_metadata_buf.length+
++										mpu_buf.mfu_sample[mfu_time_header.sample_number].offset+mpu_buf.mfu[mfu_time_header.sample_number].length-8+\
++										mpu_buf.mfu_number*34;
 +//									printf("				mpu_buf.MPU_sequence_length:%d\n",mpu_buf.MPU_sequence_length);
-+									mpu_buf.MPU_sequence_data=(unsigned char*) malloc((mpu_buf.MPU_sequence_length)*sizeof( unsigned  char));
-+									if(mpu_buf.MPU_sequence_data==NULL)
-+									{
-+										puts ("Memory allocation failed.");
-+										exit (EXIT_FAILURE);
-+									}
-+
-+									memcpy(&mpu_buf.MPU_sequence_data[0] , mpu_buf.mpu_metadata_buf.data , mpu_buf.mpu_metadata_buf.length);
-+									mpu_seek=mpu_seek+mpu_buf.mpu_metadata_buf.length;
-+									memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] , mpu_buf.fragment_metadata_buf.data , mpu_buf.fragment_metadata_buf.length);
-+									mpu_seek=mpu_seek+mpu_buf.fragment_metadata_buf.length;
-+									for(i=0;i<mpu_buf.mfu_number;i++)
-+									{
-+										memcpy(&mpu_buf.MPU_sequence_data[mpu_seek+mpu_buf.mfu_sample[i].offset-8] , mpu_buf.mfu[i].data , mpu_buf.mfu[i].length);
-+									}
-+									mpu_seek=mpu_seek+mpu_buf.mfu_sample[mpu_buf.mfu_number-1].offset-8+mpu_buf.mfu[mpu_buf.mfu_number-1].length;
-+									char mfu_sample_buff[34];
-+
-+									for(i=0;i<mpu_buf.mfu_number;i++)
-+									{
-+										init_mfu_sample(&mpu_buf.mfu_sample[i],(unsigned char*)&mfu_sample_buff[0]);
-+										memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] ,&mfu_sample_buff[0], 34);
-+										mpu_seek=mpu_seek+34;
-+									}
-+
-+									char mpu_filename[100];
-+									sprintf(mpu_filename, "channel_MPU_%.4d.mp4",mpu_buf.MPU_sequence_number);
-+                                    int sequence = mpu_buf.MPU_sequence_number;
-+
-+
-+									FILE *mpu;
-+									if((mpu=fopen(mpu_filename,"w+"))==NULL)
-+									{
-+										printf("not open");
-+										exit(0);
-+									}
-+									fwrite(mpu_buf.MPU_sequence_data,mpu_buf.MPU_sequence_length,1,mpu);
-+									fclose(mpu);
-+                                    push_mmtp_media(Res_Video, "", "", mpu_filename, sequence);
-+
-+									free_mpu_buf(&mpu_buf );
-+									init_mpu_buf(&mpu_buf);
-+									printf("finished recive a mpu - %d\n", mpu_header.FT);
-+
++								mpu_buf.MPU_sequence_data=(unsigned char*) malloc((mpu_buf.MPU_sequence_length)*sizeof( unsigned  char));
++								if(mpu_buf.MPU_sequence_data==NULL)
++								{
++									printf("mpu_buf.mfu_sample[mfu_time_header.sample_number].offset:%d+mpu_buf.mfu[mfu_time_header.sample_number].length%d,mpu_buf.mfu_number%d\n",mpu_buf.mfu_sample[mfu_time_header.sample_number].offset,mpu_buf.mfu[mfu_time_header.sample_number].length,mpu_buf.mfu_number);
++									printf("mpu_buf.mpu_metadata_buf.length:%d+mpu_buf.fragment_metadata_buf.length%d\n",mpu_buf.mpu_metadata_buf.length,mpu_buf.fragment_metadata_buf.length);
++									printf("mpu_buf.MPU_sequence_length%d\n",mpu_buf.MPU_sequence_length);
++									puts ("6Memory allocation failed.");
++									exit (EXIT_FAILURE);
 +								}
 +
++								memcpy(&mpu_buf.MPU_sequence_data[0] , mpu_buf.mpu_metadata_buf.data , mpu_buf.mpu_metadata_buf.length);
++								mpu_seek=mpu_seek+mpu_buf.mpu_metadata_buf.length;
++								memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] , mpu_buf.fragment_metadata_buf.data , mpu_buf.fragment_metadata_buf.length);
++								mpu_seek=mpu_seek+mpu_buf.fragment_metadata_buf.length;
++								for(i=0;i<mpu_buf.mfu_number;i++)
++								{
++									memcpy(&mpu_buf.MPU_sequence_data[mpu_seek+mpu_buf.mfu_sample[i].offset-8] , mpu_buf.mfu[i].data , mpu_buf.mfu[i].length);
++								}
++								mpu_seek=mpu_seek+mpu_buf.mfu_sample[mpu_buf.mfu_number-1].offset-8+mpu_buf.mfu[mpu_buf.mfu_number-1].length;
++								char mfu_sample_buff[34];
++
++								for(i=0;i<mpu_buf.mfu_number;i++)
++								{
++									init_mfu_sample(&mpu_buf.mfu_sample[i],(unsigned char*)&mfu_sample_buff[0]);
++									memcpy(&mpu_buf.MPU_sequence_data[mpu_seek] ,&mfu_sample_buff[0], 34);
++									mpu_seek=mpu_seek+34;
++								}
++
++
++								pthread_mutex_lock(&message_mutex);				/*进入互斥区*/
++								if (message_counter==1)
++								{
++										free_pa_message(&pa_message);
++										message_counter=0;
++								}
++								//接受完整的PA message
++								pthread_mutex_unlock(&message_mutex);				/*进入互斥区*/
++
++#endif
++								free_mpu_metadata_buf(mpu_buf.mpu_metadata_buf);
++								free_fragment_metadata_buf(mpu_buf.fragment_metadata_buf);
++								int i;
++								for(i=0;i<mpu_buf.mfu_number;i++)
++								{
++									free(mpu_buf.mfu[i].data);
++								}
++								free(mpu_buf.mfu);
++								free(mpu_buf.mfu_sample);
++								//free_mpu_buf(&mpu_buf );
++								init_mpu_buf(&mpu_buf );
 +							}
-+
++						}
 +//						}//RECIVE MFU
-+					}//MFU end
-+
-+				}//MPU END
-+			}//packet END
-+
-+			//删除读取的第一个节点
-+			free(DelFirst(mpu_consumer_list));
-+		}//FILTER END
-+
++				}//MFU end
++			}//MPU END
 +	}//WHILE END
 +    return NULL;
 +}//FUCTION END
 +
 +
++void open_sock_chrome(){
 +
++	;
++}
++void process_sock_chrome(){
 +
-+///
-+/// API for using in chrome
++	;
++}
++void stop_sock_chrome(){
 +
-+void init_mmtp() {
-+	signal_buff_list=InitList();
-+	mpu_buff_list=InitList();
-+	pthread_mutex_init (&signal_mutex,NULL);
-+	pthread_mutex_init (&mpu_mutex,NULL);
-+
-+    g_mmtp_cb = NULL;
-+    MCAST_PORT = 0;
-+    memset(MCAST_ADDR, 0, sizeof(MCAST_ADDR));
-+
-+    int k;
-+    for (k=0; k < MAX_ASSET_NUM; k++) {
-+        memset(g_asset_ids[k], 0, 260);
-+    }
++	;
 +}
 +
-+void set_mmtp_assets(const char* ids[], int num) {
-+    if (!ids || num <= 0) return;
-+    if (num > MAX_ASSET_NUM) num = MAX_ASSET_NUM; 
-+    g_asset_num = num;
-+    int k;
-+    for (k=0; k < num; k++) {
-+        strncpy(g_asset_ids[k], ids[k], 260);
-+    }
++void start_sock(char *addr, u_int16_t port,mmt_socket_t * mmt_socket){
++	//初始化
++		int ss;
++
++		struct sockaddr_in* local_addr = (struct sockaddr_in*)&(mmt_socket->addr);
++		int err=-1;
++	//	pid_t pid;
++		//挂接sigint信号
++		signal(SIGINT,sig_proccess);
++		signal(SIGPIPE,sig_pipe);
++
++		//建立套接字s
++		ss=socket(AF_INET, SOCK_DGRAM,0);
++		if(ss<0)
++		{
++			printf("socket error\n");
++		}
++
++	//	//设置服务器地址
++		bzero(local_addr,sizeof(*local_addr));
++		local_addr->sin_family=AF_INET;
++		local_addr->sin_addr.s_addr=htonl(INADDR_ANY);
++		local_addr->sin_port =htons(port);
++		//bzero(&(local_addr.sin_zero),8);
++
++		//绑定本地地址到套接字
++		err=bind(ss,(struct sockaddr*)local_addr,sizeof(struct sockaddr_in));
++		//printf("ready for listening");
++		if(err<0)
++		{
++			printf("bind error \n");
++		}
++		printf("ready for listening\n");
++
++		/*设置回环许可*/
++		int loop = 1 ;
++		err = setsockopt(ss, IPPROTO_IP, IP_MULTICAST_LOOP,&loop, sizeof(loop));
++		if(err ==-1)
++		{
++			printf("setsockopt failed:setsockopt():IP_MULTICAST_LOOP\n");
++		}
++
++		/*加入多播组*/
++		struct ip_mreq mreq;
++		mreq.imr_multiaddr.s_addr = inet_addr(addr); /*多播地址*/
++		mreq.imr_interface.s_addr = htonl(INADDR_ANY); /*网络接口为默认*/
++
++		/*将本机加入多播组*/
++		err = setsockopt(ss, IPPROTO_IP, IP_ADD_MEMBERSHIP,&mreq, sizeof(mreq));
++		if (err < 0)
++		{
++			printf("setsockopt():IP_ADD_MEMBERSHIP");
++		}
++
++		/*
++		 * 设置发送缓冲区大小
++		 */
++		int rcv_size=0;//设置为64K
++		socklen_t optlen;    /* 选项值长度 */
++		optlen = sizeof(rcv_size);
++		if(getsockopt(ss, SOL_SOCKET, SO_RCVBUF,&rcv_size, &optlen)<0)
++		{
++			printf("获取接收缓冲区大小错误\n");
++			exit(2);
++		}
++		printf(" 接收缓冲区原始大小为: %d 字节\n",rcv_size);
++		rcv_size=6400*1024;//设置为64K
++		if (setsockopt(ss,SOL_SOCKET,SO_RCVBUF,(const char*)&rcv_size,sizeof(int)) < 0)
++		{
++			 printf("fail to change SNDbuf.\n");
++			 exit(2);
++		 }
++		 /*
++			 * 检查上述缓冲区设置的情况
++			 * 获得修改后发送缓冲区大小
++			 */
++		if(getsockopt(ss, SOL_SOCKET, SO_RCVBUF,&rcv_size, &optlen)<0)
++		{
++			printf("获取接收缓冲区大小错误\n");
++			exit(2);
++		}
++		printf(" 接收缓冲区大小为: %d 字节\n",rcv_size);
++
++
++		mmt_socket->ss=ss;
++		//mmt_socket->addr=(struct sockaddr*)&local_addr;
 +}
 +
-+void start_mmtp(const char* mcast_ip, int mcast_port) {
-+    if (!mcast_ip || mcast_port <= 0 || mcast_port > 65535) return;
-+    strncpy(MCAST_ADDR, mcast_ip, sizeof(MCAST_ADDR));
-+    MCAST_PORT = mcast_port;
++void get_mp_table(mp_table_t mp_table){
 +
-+    pthread_t signal_consumer_t;
-+    pthread_t mpu_consumer_t;
-+    pthread_t producter_t;
++	pthread_mutex_lock(&message_mutex);				/*进入互斥区*/
 +
-+    g_running = 1;
-+	pthread_create(&producter_t, NULL,(void*)producter_f, NULL );
-+	usleep(10);
-+	pthread_create(&signal_consumer_t, NULL, (void *)signal_consumer_f, NULL);
-+	usleep(10);
-+	pthread_create(&mpu_consumer_t, NULL, (void *)mpu_consumer_f, NULL);
-+	usleep(10);
++	//查询PA message,拷贝到传入的参数
++	copy_mp_table(&mp_table ,&(pa_message.mp_table));
++	printf("message %d\n",pa_message.length);
++	//
++	pthread_mutex_unlock(&message_mutex);				/*进入互斥区*/
++
 +}
 +
-+void stop_mmtp() {
-+    CLOSESOCKET(g_sock);
-+    g_running = 0;
++void set_asset_list(){
++
++
 +}
 +
-+void uninit_mmtp() {
-+	pthread_mutex_destroy(&signal_mutex);
-+	pthread_mutex_destroy(&mpu_mutex);
-+    DestroyList(signal_buff_list);
-+    DestroyList(mpu_buff_list);
++int check_mpu_iscomplete(mpu_buf_t mpu_buf){
++	int i;
++	int total_packet=0;
++	int receive_packet=0;
++	for(i=0;i<mpu_buf.mfu_number;i++)
++		{
++		total_packet=total_packet+mpu_buf.mfu[i].number;
++		receive_packet=receive_packet+mpu_buf.mfu[i].counter;
++		};
++	if(total_packet>receive_packet)
++	{
++		return 0;
++	}
++	else
++	{
++		return 1;
++	}
 +}
 +
-+void set_mmtp_callback(mmtp_callback_t cb) {
-+    g_mmtp_cb = cb;
++int check_mfu_iscomplete(mfu_buf_t mfu_buf){
++	if(mfu_buf.number>mfu_buf.counter)
++	{
++		return 0;
++	}
++	else
++	{
++		return 1;
++	}
++}
++
++void make_file(char *mpu_name, char *data, int len ) {
++	FILE *fd = fopen(mpu_name,"wb+");
++    if (fd)
++	{
++	    fwrite(data,len,1,fd);
++	    fclose(fd);
++	}
++	else
++	{
++		printf("not open\n");
++	}
 +}
 +
 +
 +
-+///
-+/// API for using in mmtp
++void check(){
 +
-+void push_mmtp_cihtml(int res, const char* fname) {
-+    if (!g_mmtp_cb || !fname) return;
-+
-+    // should be Res_CI or Res_Html
-+    if (!(res & Res_Signal)) return;
-+
-+    struct mmtp_rinfo_t rinfo;
-+    memset(&rinfo, 0, sizeof(rinfo));
-+    rinfo.res = res;
-+    strncpy(rinfo.fname, fname, sizeof(rinfo.fname));
-+    g_mmtp_cb(&rinfo); // callback
++	;
 +}
 +
-+void push_mmtp_media(int res, const char* id, const char* url, const char* fname, int index) {
-+    if (!g_mmtp_cb || !fname) return;
++void process_packet(){
 +
-+    // should be Res_Audio/Res_Video/Res_Image
-+    if (!(res & Res_Media)) return;
-+
-+    struct mmtp_rinfo_t rinfo;
-+    memset(&rinfo, 0, sizeof(rinfo));
-+
-+    rinfo.res = res;
-+    if (id) strncpy(rinfo.id, id, sizeof(rinfo.id));
-+    if (url) strncpy(rinfo.url, url, sizeof(rinfo.url));
-+    strncpy(rinfo.fname, fname, sizeof(rinfo.fname));
-+    rinfo.index = index;
-+    g_mmtp_cb(&rinfo); // callback
++	;
 +}
 +
++//check current MPU status
++void check_receive_condition(){
++
++}
++//
++void is_mpumeta(){
++
++	;
++}
++
++//process mpumeta
++void add_mpumeta(){
++
++	;
++}
++void is_fragmeta(){
++
++	;
++}
++void add_fragmeta(){
++
++	;
++}
++void is_sample_data(){
++
++	;
++}
++void add_sample_data(){
++
++	;
++}
 diff --git a/net/mmt/mmtp/getfile.c b/net/mmt/mmtp/getfile.c
 new file mode 100644
 index 0000000..4a63216
@@ -10000,12 +10053,91 @@ index 0000000..ab895e6
 +void ini_free(ini_t *handler);
 +
 +#endif
+diff --git a/net/mmt/mmtp/mkdir.c b/net/mmt/mmtp/mkdir.c
+new file mode 100644
+index 0000000..5ad34c9
+--- /dev/null
++++ b/net/mmt/mmtp/mkdir.c
+@@ -0,0 +1,61 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdarg.h>
++#include <sys/stat.h>
++#include <string.h>
++#include <unistd.h>  /* Many POSIX functions (but not all, by a large margin) */
++#include <fcntl.h>   /* open(), creat() - and fcntl() */
++#include <dirent.h>
++
++#define ACCESS access
++#define MKDIR(a) mkdir((a),0755)
++
++
++int CreatDir(char *pDir)
++{
++	int i = 0;
++	int iRet;
++	int iLen;
++	char* pszDir;
++
++	if(NULL == pDir)
++	{
++		return 0;
++	}
++
++	DIR *dirp = opendir(pDir);
++    if (dirp)
++    {
++	    closedir(dirp);
++        return 0;
++    }
++
++	pszDir = strdup(pDir);
++	iLen = strlen(pszDir);
++
++	// 创建中间目录
++	for (i = 0;i < iLen;i ++)
++	{
++		if (pszDir[i] == '\\' || pszDir[i] == '/')
++		{
++			pszDir[i] = '\0';
++
++			//如果不存在,创建
++			iRet = ACCESS(pszDir,0);
++			if (iRet != 0)
++			{
++				iRet = MKDIR(pszDir);
++				if (iRet != 0)
++				{
++					return -1;
++				}
++			}
++			//支持linux,将所有\换成/
++			pszDir[i] = '/';
++		}
++	}
++
++	iRet = MKDIR(pszDir);
++	free(pszDir);
++	return iRet;
++}
+diff --git a/net/mmt/mmtp/mkdir.h b/net/mmt/mmtp/mkdir.h
+new file mode 100644
+index 0000000..5f75167
+--- /dev/null
++++ b/net/mmt/mmtp/mkdir.h
+@@ -0,0 +1,6 @@
++#ifndef NET_MMT_MMTP_MKDIR_H_
++#define NET_MMT_MMTP_MKDIR_H_
++
++int CreatDir(char *pDir);
++
++#endif
 diff --git a/net/mmt/mmtp/mmt.c b/net/mmt/mmtp/mmt.c
 new file mode 100644
-index 0000000..131e0b4
+index 0000000..2371708
 --- /dev/null
 +++ b/net/mmt/mmtp/mmt.c
-@@ -0,0 +1,1299 @@
+@@ -0,0 +1,1345 @@
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <strings.h>
@@ -10966,6 +11098,36 @@ index 0000000..131e0b4
 +return 0;
 +}
 +
++int  copy_mp_table(mp_table_t *mp_table_dst ,mp_table_t *mp_table_src)
++{
++
++	mp_table_dst->table_id=mp_table_src->table_id;
++	mp_table_dst->version=mp_table_src->version;
++	mp_table_dst->length=mp_table_src->length;
++	mp_table_dst->number_of_assets=mp_table_src->number_of_assets;
++	mp_table_dst->MP_table_asset= (MP_table_asset_t *)malloc(sizeof(MP_table_asset_t)*mp_table_src->number_of_assets);
++
++	u_int32_t  i;
++	for (i=0;i<mp_table_dst->number_of_assets;i++)
++		{
++			//memcpy(&mp_table_buf[seekpoint],"URL",strlen("URL"));
++			//memcpy(&mp_table_buf[seekpoint+3],"\0",1);
++			mp_table_dst->MP_table_asset[i].Identifier_mapping.URL_length=mp_table_src->MP_table_asset[i].Identifier_mapping.URL_length;
++			mp_table_dst->MP_table_asset[i].Identifier_mapping.URL_byte=(unsigned  char*) malloc(mp_table_src->MP_table_asset[i].Identifier_mapping.URL_length*sizeof( unsigned  char));
++			memcpy(mp_table_dst->MP_table_asset[i].Identifier_mapping.URL_byte,mp_table_src->MP_table_asset[i].Identifier_mapping.URL_byte,mp_table_src->MP_table_asset[i].Identifier_mapping.URL_length);
++			mp_table_dst->MP_table_asset[i].asset_type=mp_table_src->MP_table_asset[i].asset_type;
++			mp_table_dst->MP_table_asset[i].asset_clock_relation_flag=mp_table_src->MP_table_asset[i].asset_clock_relation_flag;
++			mp_table_dst->MP_table_asset[i].location_count=mp_table_src->MP_table_asset[i].location_count;
++			mp_table_dst->MP_table_asset[i].asset_descriptors_length=mp_table_src->MP_table_asset[i].asset_descriptors_length;
++			mp_table_dst->MP_table_asset[i].asset_descriptors_byte=(unsigned  char*) malloc(mp_table_src->MP_table_asset[i].asset_descriptors_length*sizeof( unsigned  char));
++			memcpy(mp_table_dst->MP_table_asset[i].asset_descriptors_byte,mp_table_dst->MP_table_asset[i].asset_descriptors_byte,mp_table_src->MP_table_asset[i].asset_descriptors_length);
++
++		}
++
++
++return 0;
++}
++
 +int free_mp_table(mp_table_t *mp_table )
 +{
 +	u_int32_t  i;
@@ -11056,24 +11218,40 @@ index 0000000..131e0b4
 +			seekpoint=seekpoint+2+mpi_table->PI_content[i].PI_content_name_length+2+mpi_table->PI_content[i].PI_content_length;
 +
 +
-+			FILE *mpi;
-+			if((mpi=fopen((char *)mpi_table->PI_content[i].PI_content_name_byte,"w+"))==NULL)
-+					{
-+						printf("not open");
-+						exit(0);
-+					}
-+			fwrite(mpi_table->PI_content[i].PI_content_byte,mpi_table->PI_content[i].PI_content_length,1,mpi);
-+			fclose(mpi);
-+
-+			printf("finished recive a ci - %d - %s\n", i, (const char *)mpi_table->PI_content[i].PI_content_name_byte);
-+
-+            int res = (i == 0) ? Res_Html : Res_CI;
-+            push_mmtp_cihtml(res, (char *)mpi_table->PI_content[i].PI_content_name_byte);
 +        }
 +	 return 0;
 +
 +}
 +
++int copy_mpi_table(mpi_table_t *mpi_table_dst, mpi_table_t  *mpi_table_src)
++{
++		mpi_table_dst->table_id=mpi_table_src->table_id;
++		mpi_table_dst->version=mpi_table_src->version;
++		mpi_table_dst->length=mpi_table_src->length;
++
++		mpi_table_dst->PI_mode=mpi_table_src->PI_mode;
++		//temp var
++		mpi_table_dst->PI_content_count=mpi_table_src->PI_content_count;
++		mpi_table_dst->PI_content= (PI_content_t *)malloc(sizeof(PI_content_t )*mpi_table_src->PI_content_count);
++		u_int32_t  i;
++
++		for (i=0;i<mpi_table_src->PI_content_count;i++)
++		{
++			//*((u_int8_t*)&mpi_table_buf[seekpoint])=(u_int8_t)(i+1);
++			mpi_table_dst->PI_content[i].PI_content_name_length=mpi_table_src->PI_content[i].PI_content_name_length;
++			mpi_table_dst->PI_content[i].PI_content_name_byte=(unsigned  char*) malloc((mpi_table_src->PI_content[i].PI_content_name_length+1)*sizeof( unsigned  char));
++			memset(mpi_table_dst->PI_content[i].PI_content_name_byte,0,(mpi_table_src->PI_content[i].PI_content_name_length+1));
++//			printf("mpi_table_dst->PI_content[i].PI_content_name_length%d\n",mpi_table_dst->PI_content[i].PI_content_name_length);
++			memcpy(mpi_table_dst->PI_content[i].PI_content_name_byte , mpi_table_src->PI_content[i].PI_content_name_byte , mpi_table_src->PI_content[i].PI_content_name_length);
++			mpi_table_dst->PI_content[i].PI_content_length=mpi_table_src->PI_content[i].PI_content_length;
++			mpi_table_dst->PI_content[i].PI_content_byte=(unsigned  char*) malloc((mpi_table_src->PI_content[i].PI_content_length+1)*sizeof( unsigned  char));
++			memset(mpi_table_dst->PI_content[i].PI_content_byte,0,(mpi_table_dst->PI_content[i].PI_content_length+1));
++			memcpy( mpi_table_dst->PI_content[i].PI_content_byte ,mpi_table_src->PI_content[i].PI_content_byte , mpi_table_src->PI_content[i].PI_content_length);
++
++        }
++	 return 0;
++
++}
 +int free_mpi_table(mpi_table_t *mpi_table)
 +{
 +	u_int32_t  i;
@@ -11307,10 +11485,10 @@ index 0000000..131e0b4
 +}
 diff --git a/net/mmt/mmtp/mmt.h b/net/mmt/mmtp/mmt.h
 new file mode 100644
-index 0000000..3ecd828
+index 0000000..9824875
 --- /dev/null
 +++ b/net/mmt/mmtp/mmt.h
-@@ -0,0 +1,464 @@
+@@ -0,0 +1,475 @@
 +#ifndef NET_MMT_MMTP_MMT_H_
 +#define NET_MMT_MMTP_MMT_H_
 +
@@ -11332,25 +11510,25 @@ index 0000000..3ecd828
 +   | ( ((uint32_t)c) << 16 ) | ( ((uint32_t)d) << 24 ) )
 +
 +
-+//#define eth_BUFF_LEN 1500
-+//
-+//#define IPh_BUFF_LEN 20
-+//#define IP_BUFF_LEN 1480
-+//
-+//#define UDPh_BUFF_LEN 8
-+//#define UDP_BUFF_LEN 1472
-+//
-+//#define MMTPh_BUFF_LEN 20
-+//#define MMTP_BUFF_LEN 1452
-+//
-+//#define signalh_BUFF_LEN 4
-+//#define signal_BUFF_LEN 1448
-+//#define MPUh_BUFF_LEN 8
-+//#define MPU_BUFF_LEN 1444
-+//#define MFUh_t_BUFF_LEN 14
-+//#define MFU_t_BUFF_LEN 1430
-+//#define MFUh_nt_BUFF_LEN 4
-+//#define MFU_nt_BUFF_LEN 1440
++#define eth_BUFF_LEN 1500
++
++#define IPh_BUFF_LEN 20
++#define IP_BUFF_LEN 1480
++
++#define UDPh_BUFF_LEN 8
++#define UDP_BUFF_LEN 1472
++
++#define MMTPh_BUFF_LEN 20
++#define MMTP_BUFF_LEN 1452
++
++#define signalh_BUFF_LEN 4
++#define signal_BUFF_LEN 1448
++#define MPUh_BUFF_LEN 8
++#define MPU_BUFF_LEN 1444
++#define MFUh_t_BUFF_LEN 14
++#define MFU_t_BUFF_LEN 1430
++#define MFUh_nt_BUFF_LEN 4
++#define MFU_nt_BUFF_LEN 1440
 +//#define maximum_value 4294967295
 +//#define SMTh_BUFF_LEN 10
 +//
@@ -11362,25 +11540,27 @@ index 0000000..3ecd828
 +//#define table_header_LEN 4
 +//#define PA_message_header_LEN 7
 +
-+#define eth_BUFF_LEN 1500
++//#define eth_BUFF_LEN 1500
++//
++//#define IPh_BUFF_LEN 20
++//#define IP_BUFF_LEN 1480
++//
++//#define UDPh_BUFF_LEN 8
++//#define UDP_BUFF_LEN 1500
++//
++//#define MMTPh_BUFF_LEN 20
++//#define MMTP_BUFF_LEN 1480
++//
++//#define signalh_BUFF_LEN 4
++//#define signal_BUFF_LEN 1476
++//#define MPUh_BUFF_LEN 8
++//#define MPU_BUFF_LEN 1472
++//#define MFUh_t_BUFF_LEN 14
++//#define MFU_t_BUFF_LEN 1458
++//#define MFUh_nt_BUFF_LEN 4
++//#define MFU_nt_BUFF_LEN 1428
 +
-+#define IPh_BUFF_LEN 20
-+#define IP_BUFF_LEN 1480
 +
-+#define UDPh_BUFF_LEN 8
-+#define UDP_BUFF_LEN 1500
-+
-+#define MMTPh_BUFF_LEN 20
-+#define MMTP_BUFF_LEN 1480
-+
-+#define signalh_BUFF_LEN 4
-+#define signal_BUFF_LEN 1476
-+#define MPUh_BUFF_LEN 8
-+#define MPU_BUFF_LEN 1472
-+#define MFUh_t_BUFF_LEN 14
-+#define MFU_t_BUFF_LEN 1458
-+#define MFUh_nt_BUFF_LEN 4
-+#define MFU_nt_BUFF_LEN 1428
 +#define maximum_value 4294967295
 +#define SMTh_BUFF_LEN 10
 +
@@ -11572,7 +11752,9 @@ index 0000000..3ecd828
 +	u_int8_t asset_clock_relation_flag;
 +	u_int8_t location_count;
 +	u_int16_t asset_descriptors_length;
++    u_int32_t packet_id;
 +	unsigned char *asset_descriptors_byte;
++    unsigned char *asset_id;
 +}MP_table_asset_t;
 +
 +typedef struct mp_table_s //4Byte
@@ -11702,6 +11884,11 @@ index 0000000..3ecd828
 +	unsigned char * MPU_sequence_data;
 +}mpu_buf_t,*pmpu_buf_t;
 +
++typedef struct mmt_socket_s //
++{
++	int ss;
++	struct sockaddr addr;
++}mmt_socket_t,*pmmt_socket_t;
 +
 +//typedef struct mpu_s //
 +//{
@@ -11750,6 +11937,7 @@ index 0000000..3ecd828
 +
 +int init_pa_table(pa_table_t *pa_table ,unsigned char *PA_table_buf);
 +int read_pa_table(pa_table_t *pa_table ,const char *PA_table_buf);
++int copy_mp_table(mp_table_t *mp_table_dst ,mp_table_t *mp_table_src);
 +int free_pa_table(pa_table_t *pa_table);
 +
 +int init_mp_table(mp_table_t *mp_table, unsigned char **mp_table_buf);
@@ -11758,6 +11946,7 @@ index 0000000..3ecd828
 +
 +int init_mpi_table(mpi_table_t *mpi_table, unsigned char **mpi_table_buf);
 +int read_mpi_table(mpi_table_t *mpi_table, const char *mpi_table_buf);
++int copy_mpi_table(mpi_table_t *mpi_table_dst, mpi_table_t *mpi_table_src);
 +int free_mpi_table(mpi_table_t *mpi_table);
 +
 +int send_mpu(int ss,struct sockaddr*to,char *Fullpath,u_int32_t *packet_sequence_number,u_int32_t *packet_counter,u_int32_t MPU_sequence_number,u_int32_t *MPU_present_time,u_int32_t packet_id);
@@ -11775,12 +11964,165 @@ index 0000000..3ecd828
 +int init_mpu_buf(mpu_buf_t *mpu_buf );
 +
 +#endif
+diff --git a/net/mmt/mmtp/mmtp.c b/net/mmt/mmtp/mmtp.c
+new file mode 100644
+index 0000000..a363679
+--- /dev/null
++++ b/net/mmt/mmtp/mmtp.c
+@@ -0,0 +1,147 @@
++#include "mmtp.h"
++#include "DList.h"
++#include "mmt.h"
++#include "mkdir.h"
++
++#include <pthread.h>
++
++//> extern vars
++extern int MCAST_PORT;
++extern char MCAST_ADDR[64];
++extern DList* signal_buff_list;
++extern DList* mpu_buff_list;
++extern pthread_mutex_t signal_mutex;
++extern pthread_mutex_t  mpu_mutex;
++extern mmt_socket_t g_mmt_socket;
++extern int g_running;
++
++extern void *producter_f (mmt_socket_t *mmt_socket);
++extern void *mpu_consumer_f (void *arg);
++extern void *signal_consumer_f (void *arg);
++extern void start_sock(char *addr, u_int16_t port,mmt_socket_t * mmt_socket);
++
++//>
++mmtp_callback_t g_mmtp_cb;
++
++extern int g_pktid_init;
++extern int g_asset_num;
++extern char g_asset_ids[MAX_ASSET_NUM][260];
++extern char g_asset_clips[MAX_ASSET_NUM][260];
++extern int g_pktid_asset[MAX_ID_NUM]; // pktid => g_asset_ids
++
++
++///
++/// API for using in chrome
++
++void init_mmtp() {
++	signal_buff_list=InitList();
++	mpu_buff_list=InitList();
++	pthread_mutex_init (&signal_mutex,NULL);
++	pthread_mutex_init (&mpu_mutex,NULL);
++
++    g_mmtp_cb = NULL;
++    MCAST_PORT = 0;
++    memset(MCAST_ADDR, 0, sizeof(MCAST_ADDR));
++    // create cache dir
++    CreatDir(MMTP_CACHE);
++
++    g_asset_num = 0;
++    g_pktid_init = -1;
++    int k;
++    for (k=0; k < MAX_ID_NUM; k++) {
++        g_pktid_asset[k] = -1;
++    }
++}
++
++void set_mmtp_assets(const char* ids[], const char* clips[], int num) {
++    if (!ids || num <= 0) return;
++    if (num > MAX_ASSET_NUM) num = MAX_ASSET_NUM; 
++
++    g_asset_num = num;
++    int k;
++    for (k=0; k < num; k++) {
++        if (ids)
++            strncpy(g_asset_ids[k], ids[k], 260);
++        if (clips)
++            strncpy(g_asset_clips[k], clips[k], 260);
++    }
++
++    g_pktid_init = -1;
++    for (k=0; k < MAX_ID_NUM; k++) {
++        g_pktid_asset[k] = -1;
++    }
++}
++
++void start_mmtp(const char* mcast_ip, int mcast_port) {
++    if (!mcast_ip || mcast_port <= 0 || mcast_port > 65535) return;
++
++    strncpy(MCAST_ADDR, mcast_ip, sizeof(MCAST_ADDR));
++    MCAST_PORT = mcast_port;
++
++    pthread_t signal_consumer_t;
++    pthread_t mpu_consumer_t;
++    pthread_t producter_t;
++
++    start_sock((char *)mcast_ip, mcast_port, &g_mmt_socket);
++
++	pthread_create(&producter_t, NULL,(void*)producter_f, &g_mmt_socket);
++	usleep(10);
++	pthread_create(&signal_consumer_t, NULL, (void *)signal_consumer_f, NULL);
++	usleep(10);
++	pthread_create(&mpu_consumer_t, NULL, (void *)mpu_consumer_f, NULL);
++	usleep(10);
++    g_running = 1;
++}
++
++void stop_mmtp() {
++    close(g_mmt_socket.ss);
++    g_mmt_socket.ss = -1;
++    g_running = 0;
++}
++
++void uninit_mmtp() {
++	pthread_mutex_destroy(&signal_mutex);
++	pthread_mutex_destroy(&mpu_mutex);
++    DestroyList(signal_buff_list);
++    DestroyList(mpu_buff_list);
++}
++
++void set_mmtp_callback(mmtp_callback_t cb) {
++    g_mmtp_cb = cb;
++}
++
++
++
++///
++/// API for using in mmtp
++
++void push_mmtp_cihtml(int res, const char* fname) {
++    if (!g_mmtp_cb || !fname) return;
++
++    // should be Res_CI or Res_Html
++    if (!(res & Res_Signal)) return;
++
++    struct mmtp_rinfo_t rinfo;
++    memset(&rinfo, 0, sizeof(rinfo));
++    rinfo.res = res;
++    strncpy(rinfo.fname, fname, sizeof(rinfo.fname));
++    g_mmtp_cb(&rinfo); // callback
++}
++
++void push_mmtp_media(int res, const char* id, const char* url, const char* fname, int index) {
++    if (!g_mmtp_cb || !fname) return;
++
++    // should be Res_Audio/Res_Video/Res_Image
++    if (!(res & Res_Media)) return;
++
++    struct mmtp_rinfo_t rinfo;
++    memset(&rinfo, 0, sizeof(rinfo));
++
++    rinfo.res = res;
++    if (id) strncpy(rinfo.id, id, sizeof(rinfo.id));
++    if (url) strncpy(rinfo.url, url, sizeof(rinfo.url));
++    strncpy(rinfo.fname, fname, sizeof(rinfo.fname));
++    rinfo.index = index;
++    g_mmtp_cb(&rinfo); // callback
++}
++
 diff --git a/net/mmt/mmtp/mmtp.gyp b/net/mmt/mmtp/mmtp.gyp
 new file mode 100644
-index 0000000..7c2bc3f
+index 0000000..d2540e3
 --- /dev/null
 +++ b/net/mmt/mmtp/mmtp.gyp
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,95 @@
 +# Copyright (c) 2012 The Chromium Authors. All rights reserved.
 +# Use of this source code is governed by a BSD-style license that can be
 +# found in the LICENSE file.
@@ -11810,6 +12152,7 @@ index 0000000..7c2bc3f
 +      'type': 'static_library',
 +      'product_name': 'mmtp',
 +      'sources': [
++        'mmtp.c',
 +        'DList.c',
 +        'Mlist.c',
 +        'client.c',
@@ -11818,7 +12161,8 @@ index 0000000..7c2bc3f
 +        'mmt.c',
 +        'ringq.c',  
 +        'send.c',
-+      ],
++        'mkdir.c',
++        ],
 +      'defines': [
 +        'DEBUG',
 +      ],
@@ -11876,10 +12220,10 @@ index 0000000..7c2bc3f
 +}
 diff --git a/net/mmt/mmtp/mmtp.h b/net/mmt/mmtp/mmtp.h
 new file mode 100644
-index 0000000..657ef54
+index 0000000..fa8b8dd
 --- /dev/null
 +++ b/net/mmt/mmtp/mmtp.h
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,104 @@
 +#ifndef NET_MMT_MMTP_MMTP_H_
 +#define NET_MMT_MMTP_MMTP_H_
 +
@@ -11887,6 +12231,9 @@ index 0000000..657ef54
 +extern "C" {
 +#endif
 +
++#define MMTP_CACHE      "./cache"
++#define MAX_ASSET_NUM   128
++#define MAX_ID_NUM      (MAX_ASSET_NUM*3)
 +
 +
 +//================================================
@@ -11899,7 +12246,7 @@ index 0000000..657ef54
 +/**
 + * Chrome set asset ids
 + */
-+void set_mmtp_assets(const char* ids[], int num);
++void set_mmtp_assets(const char* ids[], const char* clips[], int num);
 +
 +/**
 + * Chrome start mmtp receiver with multicast address

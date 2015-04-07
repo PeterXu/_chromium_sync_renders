@@ -64,7 +64,7 @@ function build() {
     #targets+="cast_tools cast_benchmarks tap_proxy udp_proxy "
     #targets+="generate_barcode_video generate_timecode_audio "
     #targets+="mcs_probe maptsvdifftool bitmaptools image_diff minidump_stackwalk "
-    cd $CHROME && ninja -C out/$PROFILE $targets -j8 || exit 1
+    cd $CHROME && ninja -C out/$PROFILE $targets -j16 || exit 1
 
     # needed if you build on NFS!
     cd $CHROME && sudo cp -f out/$PROFILE/chrome_sandbox /usr/local/sbin/chrome-devel-sandbox 
@@ -90,7 +90,7 @@ function package() {
     # extensions
     cp -rf $CHROME/chrome/common/extensions/docs/examples/api/ciscreen $dstdir/extensions/
 
-    #tar cfz chrome_latest.tar.gz $dstdir
+    tar cfz chrome_latest.tar.gz $dstdir
 }
 
 
